@@ -37,9 +37,14 @@ class MarstekCoordinator:
         """Initialize the coordinator."""
         self.hass = hass
         self.entry = entry
-        self.config = entry.data
+        # Erstelle eine kombinierte Konfiguration.
+        # Beginne mit den Daten aus der Ersteinrichtung...
+        self.config = dict(entry.data)
+        # ...und überschreibe sie mit den Werten aus dem Options-Flow.
+        self.config.update(entry.options)
+
         self._is_running = False
-        self._unsub_listener = None
+        self._unsub_listener = Non
 
         # State variables
         self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
