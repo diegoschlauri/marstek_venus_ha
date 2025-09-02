@@ -1,4 +1,4 @@
-# Home Assistant - Intelligente Batteriesteuerung für Marstek Venus E (und andere)
+# Home Assistant - Intelligente Batteriesteuerung für Marstek Venus E
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg)](https://github.com/hacs/integration)
 
