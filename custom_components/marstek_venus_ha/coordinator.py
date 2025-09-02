@@ -27,6 +27,8 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+WALLBOX_POWER_STABILITY_THRESHOLD = 50  # Watt
+WALLBOX_RESUME_CHECK_MINUTES = 5
 
 class MarstekCoordinator:
     """The main coordinator for handling battery logic."""
@@ -40,12 +42,15 @@ class MarstekCoordinator:
         self._unsub_listener = None
 
         # State variables
-        self._power_history = deque(maxlen=self._get_deque_size())
+        self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
         self._battery_priority = []
         self._last_priority_update = datetime.min
         self._last_power_direction = 0  # 1 for charging, -1 for discharging, 0 for neutral
-        self._wallbox_charge_paused_at = None
         
+        # Wallbox state
+        self._wallbox_charge_paused = False
+        self._wallbox_power_history = deque(maxlen=self._get_deque_size("wallbox"))
+
         # Collect battery entities
         self._battery_entities = [
             b for b in [
@@ -55,21 +60,31 @@ class MarstekCoordinator:
             ] if b
         ]
 
-    def _get_deque_size(self):
+    def _get_deque_size(self, mode: str):
         """Calculate deque size based on config."""
-        smoothing_seconds = self.config.get(CONF_SMOOTHING_SECONDS)
-        return max(1, smoothing_seconds // COORDINATOR_UPDATE_INTERVAL_SECONDS)
+        if mode == "smoothing":
+            seconds = self.config.get(CONF_SMOOTHING_SECONDS)
+        elif mode == "wallbox":
+            seconds = WALLBOX_RESUME_CHECK_MINUTES * 60
+        else:
+            return 1
+            
+        return max(1, seconds // COORDINATOR_UPDATE_INTERVAL_SECONDS)
 
     async def async_start_listening(self):
         """Start the coordinator's update loop."""
         if not self._is_running:
+            # Re-initialize deques on start
+            self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
+            self._wallbox_power_history = deque(maxlen=self._get_deque_size("wallbox"))
+
             self._unsub_listener = async_track_time_interval(
                 self.hass,
                 self._async_update,
                 timedelta(seconds=COORDINATOR_UPDATE_INTERVAL_SECONDS),
             )
             self._is_running = True
-            _LOGGER.info("Marstek Venus HA coordinator started.")
+            _LOGGER.info("Marstek Intelligent Battery coordinator started.")
 
     async def async_stop_listening(self):
         """Stop the coordinator's update loop."""
@@ -77,12 +92,13 @@ class MarstekCoordinator:
             self._unsub_listener()
             self._unsub_listener = None
         self._is_running = False
-        # Set all battery powers to 0 on shutdown
         await self._set_all_batteries_to_zero()
-        _LOGGER.info("Marstek Venus HA coordinator stopped.")
+        _LOGGER.info("Marstek Intelligent Battery coordinator stopped.")
 
     def _get_entity_state(self, entity_id: str) -> State | None:
         """Safely get the state of an entity."""
+        if not entity_id:
+            return None
         state = self.hass.states.get(entity_id)
         if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             _LOGGER.warning(f"Entity '{entity_id}' is unavailable or unknown.")
@@ -93,54 +109,120 @@ class MarstekCoordinator:
         """Fetch new data and run the logic."""
         _LOGGER.debug("Coordinator update triggered.")
 
-        # 1. Get smoothed grid power
         smoothed_power = self._get_smoothed_grid_power()
         if smoothed_power is None:
             _LOGGER.warning("Could not determine grid power. Skipping update cycle.")
             return
 
-        # 2. Handle Wallbox logic, which can override battery control
         if await self._handle_wallbox_logic(smoothed_power):
             _LOGGER.debug("Wallbox logic took control. Ending update cycle.")
             return
         
-        # 3. Determine if priority needs recalculation
         await self._update_battery_priority_if_needed(smoothed_power)
-
-        # 4. Distribute power based on stages and priority
         await self._distribute_power(smoothed_power)
+
+    def _get_float_state(self, entity_id: str) -> float | None:
+        """Safely get a float value from a state."""
+        state = self._get_entity_state(entity_id)
+        if state is None:
+            return None
+        try:
+            return float(state.state)
+        except (ValueError, TypeError):
+            _LOGGER.warning(f"Could not parse state of '{entity_id}' as float: '{state.state}'")
+            return None
 
     def _get_smoothed_grid_power(self) -> float | None:
         """Get the current power from the grid sensor and calculate the smoothed average."""
         grid_sensor_id = self.config.get(CONF_GRID_POWER_SENSOR)
-        grid_state = self._get_entity_state(grid_sensor_id)
+        current_power = self._get_float_state(grid_sensor_id)
         
-        if grid_state is None:
+        if current_power is None:
             return None
-        
-        try:
-            current_power = float(grid_state.state)
-            self._power_history.append(current_power)
             
-            if not self._power_history:
-                return 0.0
+        self._power_history.append(current_power)
+        if not self._power_history:
+            return 0.0
 
-            avg_power = sum(self._power_history) / len(self._power_history)
-            _LOGGER.debug(f"Current power: {current_power}W, Smoothed power: {avg_power:.2f}W")
-            return avg_power
-        except (ValueError, TypeError):
-            _LOGGER.error(f"Could not parse grid power sensor '{grid_sensor_id}' state: '{grid_state.state}'")
-            return None
+        avg_power = sum(self._power_history) / len(self._power_history)
+        _LOGGER.debug(f"Current grid power: {current_power}W, Smoothed grid power: {avg_power:.2f}W")
+        return avg_power
+
+    async def _handle_wallbox_logic(self, smoothed_grid_power: float) -> bool:
+        """Implement the wallbox charging logic. Returns True if it took control."""
+        wb_power_sensor = self.config.get(CONF_WALLBOX_POWER_SENSOR)
+        wb_cable_sensor = self.config.get(CONF_WALLBOX_CABLE_SENSOR)
+        max_surplus = self.config.get(CONF_WALLBOX_MAX_SURPLUS)
+
+        if not all([wb_power_sensor, wb_cable_sensor, max_surplus is not None]):
+            self._wallbox_charge_paused = False
+            return False
+
+        cable_state = self._get_entity_state(wb_cable_sensor)
+        if not cable_state or cable_state.state != STATE_ON:
+            self._wallbox_charge_paused = False
+            self._wallbox_power_history.clear()
+            return False
+
+        wb_power = self._get_float_state(wb_power_sensor) or 0.0
+        self._wallbox_power_history.append(wb_power)
+
+        # Rule 1: Always prevent battery discharge if wallbox is drawing power
+        if wb_power > 10:
+            _LOGGER.debug("Wallbox is active, ensuring batteries do not discharge.")
+            if self._last_power_direction == -1:
+                await self._set_all_batteries_to_zero()
+                return True # Take control to stop discharging
+
+        # Rule 2: Check if battery charging should be PAUSED for the car
+        total_battery_charge_power = sum(
+            p for p in [
+                self._get_float_state(f"sensor.{b}_power") for b in self._battery_entities
+            ] if p is not None and p > 0
+        )
+        
+        # Real surplus = what goes into the grid + what goes into the batteries
+        real_surplus = -smoothed_grid_power + total_battery_charge_power
+        
+        if real_surplus > max_surplus:
+            _LOGGER.info(f"Real surplus ({real_surplus:.0f}W) > max ({max_surplus}W). Pausing battery charging.")
+            self._wallbox_charge_paused = True
+            await self._set_all_batteries_to_zero()
+            return True
+
+        # Rule 3: Check if paused charging can be RESUMED
+        if self._wallbox_charge_paused:
+            # Check if history is full (5 minutes passed)
+            if len(self._wallbox_power_history) == self._wallbox_power_history.maxlen:
+                oldest_power = self._wallbox_power_history[0]
+                power_increase = wb_power - oldest_power
+                
+                # If power has not increased significantly, car is likely full or at max rate
+                if power_increase < WALLBOX_POWER_STABILITY_THRESHOLD:
+                    _LOGGER.info(f"Wallbox power has stabilized. Resuming battery charging logic.")
+                    self._wallbox_charge_paused = False
+                    self._wallbox_power_history.clear()
+                    # We return False to let the normal logic resume charging.
+                    # The discharge protection (Rule 1) will still apply if wb_power > 10.
+                    return False
+
+            # If still paused, keep batteries at zero
+            _LOGGER.debug("Battery charging remains paused for wallbox.")
+            await self._set_all_batteries_to_zero()
+            return True
+
+        return False
+    
+    # ... (rest of the methods: _update_battery_priority_if_needed, _calculate_battery_priority, _distribute_power, _set_battery_power, _set_all_batteries_to_zero)
+    # These methods do not need changes from the previous version. I'll include them for completeness.
 
     async def _update_battery_priority_if_needed(self, current_power: float):
         """Check conditions and update battery priority list."""
-        # Determine current power direction
-        # Negative power is surplus (charging), positive is demand (discharging)
         power_direction = 0
-        if current_power < -50:  # Hysteresis to prevent flipping
-            power_direction = 1  # Charging
+        if current_power < -50:
+            power_direction = 1
         elif current_power > 50:
-            power_direction = -1 # Discharging
+            power_direction = -1
 
         priority_interval = timedelta(minutes=self.config.get(CONF_PRIORITY_INTERVAL))
         time_since_last_update = datetime.now() - self._last_priority_update
@@ -165,26 +247,15 @@ class MarstekCoordinator:
         
         available_batteries = []
         for base_entity_id in self._battery_entities:
-            soc_sensor_id = f"sensor.{base_entity_id}_soc"
-            soc_state = self._get_entity_state(soc_sensor_id)
-            
-            if soc_state is None:
+            soc = self._get_float_state(f"sensor.{base_entity_id}_soc")
+            if soc is None:
                 continue
-            
-            try:
-                soc = float(soc_state.state)
-                # Check if battery is eligible based on direction and SoC limits
-                if power_direction == 1 and soc < max_soc:  # Charging
-                    available_batteries.append({"id": base_entity_id, "soc": soc})
-                elif power_direction == -1 and soc > min_soc:  # Discharging
-                    available_batteries.append({"id": base_entity_id, "soc": soc})
-            except (ValueError, TypeError):
-                _LOGGER.warning(f"Could not parse SoC for {soc_sensor_id}")
-                continue
-        
-        # Sort the batteries
-        # For charging, lowest SoC first (ascending)
-        # For discharging, highest SoC first (descending)
+
+            if power_direction == 1 and soc < max_soc:
+                available_batteries.append({"id": base_entity_id, "soc": soc})
+            elif power_direction == -1 and soc > min_soc:
+                available_batteries.append({"id": base_entity_id, "soc": soc})
+
         is_reverse = (power_direction == -1)
         self._battery_priority = sorted(available_batteries, key=lambda x: x['soc'], reverse=is_reverse)
         _LOGGER.debug(f"New battery priority: {self._battery_priority}")
@@ -203,9 +274,9 @@ class MarstekCoordinator:
         active_batteries = []
         if abs_power <= stage1 or num_available == 1:
             active_batteries = self._battery_priority[:1]
-        elif stage1 < abs_power <= stage2 or num_available == 2:
+        elif (stage1 < abs_power <= stage2) or num_available == 2:
             active_batteries = self._battery_priority[:2]
-        else: # abs_power > stage2 and num_available >= 3
+        else:
             active_batteries = self._battery_priority[:3]
 
         if not active_batteries:
@@ -217,66 +288,11 @@ class MarstekCoordinator:
 
         _LOGGER.debug(f"Distributing {power:.0f}W to {len(active_battery_ids)} batteries: {active_battery_ids} with {power_per_battery}W each.")
 
-        # Set power for all batteries
         for battery_base_id in self._battery_entities:
             if battery_base_id in active_battery_ids:
                 await self._set_battery_power(battery_base_id, power_per_battery, self._last_power_direction)
             else:
                 await self._set_battery_power(battery_base_id, 0, 0)
-
-    async def _handle_wallbox_logic(self, smoothed_grid_power: float) -> bool:
-        """Implement the wallbox charging logic. Returns True if it took control."""
-        wb_power_sensor = self.config.get(CONF_WALLBOX_POWER_SENSOR)
-        wb_cable_sensor = self.config.get(CONF_WALLBOX_CABLE_SENSOR)
-
-        if not all([wb_power_sensor, wb_cable_sensor]):
-            return False # Wallbox not configured
-
-        cable_state = self._get_entity_state(wb_cable_sensor)
-        if cable_state is None or cable_state.state != STATE_ON:
-            self._wallbox_charge_paused_at = None # Reset pause timer if cable unplugged
-            return False # Cable not plugged in, wallbox logic inactive
-
-        # Cable is plugged in
-        power_state = self._get_entity_state(wb_power_sensor)
-        try:
-            wb_power = float(power_state.state) if power_state else 0.0
-        except (ValueError, TypeError):
-            wb_power = 0.0
-
-        # Rule: If wallbox is drawing power, stop ALL battery discharging
-        if wb_power > 10: # Hysteresis
-            _LOGGER.info("Wallbox is active, disabling all battery discharging.")
-            # We only need to stop discharging. Charging from surplus is still ok.
-            if self._last_power_direction == -1: # if we are currently discharging
-                await self._set_all_batteries_to_zero()
-                return True
-        
-        # Rule: If PV surplus is high, pause battery charging for the car
-        # A negative smoothed_grid_power means surplus (e.g., -2000W is 2kW surplus)
-        surplus = -smoothed_grid_power
-        max_surplus = self.config.get(CONF_WALLBOX_MAX_SURPLUS)
-
-        if surplus > max_surplus and self._last_power_direction == 1: # High surplus and we are charging
-            _LOGGER.info(f"High PV surplus ({surplus:.0f}W > {max_surplus}W). Pausing battery charging for wallbox.")
-            await self._set_all_batteries_to_zero()
-            if self._wallbox_charge_paused_at is None:
-                self._wallbox_charge_paused_at = datetime.now()
-            return True # Wallbox logic takes control
-
-        # Rule: If charging paused for > 5 mins and car hasn't started, resume battery charging
-        if self._wallbox_charge_paused_at and wb_power < 10:
-            pause_duration = datetime.now() - self._wallbox_charge_paused_at
-            if pause_duration > timedelta(minutes=5):
-                _LOGGER.info("Wallbox did not start charging for 5 minutes. Resuming battery charging.")
-                self._wallbox_charge_paused_at = None
-                return False # Let normal logic resume
-
-        # If we paused and the car started charging, keep the timestamp to not resume later
-        if self._wallbox_charge_paused_at and wb_power > 10:
-             self._wallbox_charge_paused_at = None
-
-        return False # Wallbox logic does not need to intervene
 
     async def _set_battery_power(self, base_entity_id: str, power: int, direction: int):
         """Set the charge or discharge power for a single battery."""
@@ -284,15 +300,17 @@ class MarstekCoordinator:
         discharge_entity = f"number.{base_entity_id}_discharge_power"
         
         try:
-            if direction == 1: # Charging
-                await self.hass.services.async_call("number", "set_value", {"entity_id": charge_entity, "value": power})
-                await self.hass.services.async_call("number", "set_value", {"entity_id": discharge_entity, "value": 0})
-            elif direction == -1: # Discharging
-                await self.hass.services.async_call("number", "set_value", {"entity_id": charge_entity, "value": 0})
-                await self.hass.services.async_call("number", "set_value", {"entity_id": discharge_entity, "value": power})
-            else: # Set to zero
-                await self.hass.services.async_call("number", "set_value", {"entity_id": charge_entity, "value": 0})
-                await self.hass.services.async_call("number", "set_value", {"entity_id": discharge_entity, "value": 0})
+            if direction == 1:
+                await self.hass.services.async_call("number", "set_value", {"entity_id": charge_entity, "value": power}, blocking=True)
+                await self.hass.services.async_call("number", "set_value", {"entity_id": discharge_entity, "value": 0}, blocking=True)
+            elif direction == -1:
+                await self.hass.services.async_call("number", "set_value", {"entity_id": charge_entity, "value": 0}, blocking=True)
+                await self.hass.services.async_call("number", "set_value", {"entity_id": discharge_entity, "value": power}, blocking=True)
+            else:
+                await self.hass.services.async_call("number", "set_value", {"entity_id": charge_entity, "value": 0}, blocking=True)
+                await self.hass.services.async_call("number", "set_value", {"entity_id": discharge_entity, "value": 0}, blocking=True)
+            # Add a small delay to prevent overwhelming the device APIs
+            await asyncio.sleep(0.1)
         except Exception as e:
             _LOGGER.error(f"Failed to set power for {base_entity_id}: {e}")
 
