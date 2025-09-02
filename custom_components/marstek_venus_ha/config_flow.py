@@ -86,61 +86,91 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
+        # Erstelle das Schema und fülle es mit den Werten aus den 'options',
+        # mit einem Fallback auf die ursprünglichen 'data'.
         options_schema = vol.Schema(
             {
                 vol.Required(
                     CONF_GRID_POWER_SENSOR,
-                    default=self.config_entry.data.get(CONF_GRID_POWER_SENSOR),
+                    default=self.config_entry.options.get(
+                        CONF_GRID_POWER_SENSOR, self.config_entry.data.get(CONF_GRID_POWER_SENSOR)
+                    ),
                 ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
                 vol.Required(
                     CONF_SMOOTHING_SECONDS,
-                    default=self.config_entry.data.get(CONF_SMOOTHING_SECONDS, DEFAULT_SMOOTHING_SECONDS),
+                    default=self.config_entry.options.get(
+                        CONF_SMOOTHING_SECONDS, self.config_entry.data.get(CONF_SMOOTHING_SECONDS, DEFAULT_SMOOTHING_SECONDS)
+                    ),
                 ): int,
                 vol.Required(
                     CONF_BATTERY_1_ENTITY,
-                    default=self.config_entry.data.get(CONF_BATTERY_1_ENTITY),
+                    default=self.config_entry.options.get(
+                        CONF_BATTERY_1_ENTITY, self.config_entry.data.get(CONF_BATTERY_1_ENTITY)
+                    ),
                 ): str,
                 vol.Optional(
                     CONF_BATTERY_2_ENTITY,
-                    default=self.config_entry.data.get(CONF_BATTERY_2_ENTITY, ""),
+                    default=self.config_entry.options.get(
+                        CONF_BATTERY_2_ENTITY, self.config_entry.data.get(CONF_BATTERY_2_ENTITY, "")
+                    ),
                 ): str,
                 vol.Optional(
                     CONF_BATTERY_3_ENTITY,
-                    default=self.config_entry.data.get(CONF_BATTERY_3_ENTITY, ""),
+                    default=self.config_entry.options.get(
+                        CONF_BATTERY_3_ENTITY, self.config_entry.data.get(CONF_BATTERY_3_ENTITY, "")
+                    ),
                 ): str,
                 vol.Required(
                     CONF_MIN_SOC,
-                    default=self.config_entry.data.get(CONF_MIN_SOC, DEFAULT_MIN_SOC),
+                    default=self.config_entry.options.get(
+                        CONF_MIN_SOC, self.config_entry.data.get(CONF_MIN_SOC, DEFAULT_MIN_SOC)
+                    ),
                 ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
                 vol.Required(
                     CONF_MAX_SOC,
-                    default=self.config_entry.data.get(CONF_MAX_SOC, DEFAULT_MAX_SOC),
+                    default=self.config_entry.options.get(
+                        CONF_MAX_SOC, self.config_entry.data.get(CONF_MAX_SOC, DEFAULT_MAX_SOC)
+                    ),
                 ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
                 vol.Required(
                     CONF_POWER_STAGE_1,
-                    default=self.config_entry.data.get(CONF_POWER_STAGE_1, DEFAULT_POWER_STAGE_1),
+                    default=self.config_entry.options.get(
+                        CONF_POWER_STAGE_1, self.config_entry.data.get(CONF_POWER_STAGE_1, DEFAULT_POWER_STAGE_1)
+                    ),
                 ): int,
                 vol.Required(
                     CONF_POWER_STAGE_2,
-                    default=self.config_entry.data.get(CONF_POWER_STAGE_2, DEFAULT_POWER_STAGE_2),
+                    default=self.config_entry.options.get(
+                        CONF_POWER_STAGE_2, self.config_entry.data.get(CONF_POWER_STAGE_2, DEFAULT_POWER_STAGE_2)
+                    ),
                 ): int,
                 vol.Required(
                     CONF_PRIORITY_INTERVAL,
-                    default=self.config_entry.data.get(CONF_PRIORITY_INTERVAL, DEFAULT_PRIORITY_INTERVAL),
+                    default=self.config_entry.options.get(
+                        CONF_PRIORITY_INTERVAL, self.config_entry.data.get(CONF_PRIORITY_INTERVAL, DEFAULT_PRIORITY_INTERVAL)
+                    ),
                 ): int,
                 vol.Optional(
                     CONF_WALLBOX_POWER_SENSOR,
-                    default=self.config_entry.data.get(CONF_WALLBOX_POWER_SENSOR),
+                    default=self.config_entry.options.get(
+                        CONF_WALLBOX_POWER_SENSOR, self.config_entry.data.get(CONF_WALLBOX_POWER_SENSOR)
+                    ),
                 ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
                 vol.Optional(
                     CONF_WALLBOX_MAX_SURPLUS,
-                    default=self.config_entry.data.get(CONF_WALLBOX_MAX_SURPLUS, DEFAULT_WALLBOX_MAX_SURPLUS),
+                    default=self.config_entry.options.get(
+                        CONF_WALLBOX_MAX_SURPLUS, self.config_entry.data.get(CONF_WALLBOX_MAX_SURPLUS, DEFAULT_WALLBOX_MAX_SURPLUS)
+                    ),
                 ): int,
                 vol.Optional(
                     CONF_WALLBOX_CABLE_SENSOR,
-                    default=self.config_entry.data.get(CONF_WALLBOX_CABLE_SENSOR),
+                    default=self.config_entry.options.get(
+                        CONF_WALLBOX_CABLE_SENSOR, self.config_entry.data.get(CONF_WALLBOX_CABLE_SENSOR)
+                    ),
                 ): selector.EntitySelector(selector.EntitySelectorConfig(domain="binary_sensor")),
             }
         )
+
+        return self.async_show_form(step_id="init", data_schema=options_schema)
 
         return self.async_show_form(step_id="init", data_schema=options_schema)
