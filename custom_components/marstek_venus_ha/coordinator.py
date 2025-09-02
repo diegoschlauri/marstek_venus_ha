@@ -27,7 +27,7 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-WALLBOX_POWER_STABILITY_THRESHOLD = 50  # Watt
+WALLBOX_POWER_STABILITY_THRESHOLD = 100  # Watt
 WALLBOX_RESUME_CHECK_MINUTES = 5
 
 class MarstekCoordinator:
@@ -212,9 +212,6 @@ class MarstekCoordinator:
             return True
 
         return False
-    
-    # ... (rest of the methods: _update_battery_priority_if_needed, _calculate_battery_priority, _distribute_power, _set_battery_power, _set_all_batteries_to_zero)
-    # These methods do not need changes from the previous version. I'll include them for completeness.
 
     async def _update_battery_priority_if_needed(self, current_power: float):
         """Check conditions and update battery priority list."""
