@@ -27,10 +27,10 @@ Diese Integration steuert die Batterien nicht direkt über eine herstellerspezif
 Im Konfigurationsprozess geben Sie den **Basis-Entitätsnamen** für jede Batterie an (z. B. `batterie_1`). Die Integration leitet daraus die Namen der benötigten Entitäten ab, indem sie Suffixe wie `_soc`, `_charge_power` und `_discharge_power` erwartet.
 
 **Beispiel:**
-Wenn Sie als Entität für die erste Batterie `marstek_venus_e_keller` angeben, muss die Integration folgende Entitäten finden können:
-* `sensor.marstek_venus_e_keller_soc`
-* `number.marstek_venus_e_keller_charge_power`
-* `number.marstek_venus_e_keller_discharge_power`
+Wenn Sie als Entität für die erste Batterie `marstek_venus_e_x` angeben, muss die Integration folgende Entitäten finden können:
+* `sensor.marstek_venus_e_x_soc`
+* `number.marstek_venus_e_x_charge_power`
+* `number.marstek_venus_e_x_discharge_power`
 
 Stellen Sie sicher, dass diese Entitäten vorhanden und funktionsfähig sind, bevor Sie die Integration einrichten.
 
