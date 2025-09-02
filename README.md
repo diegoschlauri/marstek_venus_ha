@@ -102,4 +102,4 @@ Die absolute Netzleistung (`abs(power)`) bestimmt die Anzahl der aktiven Batteri
 
 * **Entladeschutz**: Sobald die Wallbox Strom zieht (`Leistung > 10W`), wird das Entladen **aller** Batterien sofort gestoppt.
 * **Ladevorrang für das Auto**: Wenn der **reale PV-Überschuss** (Netzeinspeisung + aktuelle Batterieladeleistung) den konfigurierten Schwellenwert übersteigt, wird das Laden der Heimbatterien pausiert, um dem Auto Vorrang zu geben.
-* **Intelligente Lade-Wiederaufnahme**: Das Laden der Batterien wird wieder freigegeben, wenn die Ladeleistung der Wallbox für 5 Minuten stagniert (z.B. weil das Auto voll ist oder seine maximale Ladeleistung erreicht hat). Das Entladen bleibt aber weiterhin gesperrt, solange die Wallbox aktiv ist.
+* **Intelligente Lade-Wiederaufnahme**: Das Laden der Batterien wird wieder freigegeben, wenn die Ladeleistung der Wallbox für 5 Minuten stagniert (z.B. weil das Auto voll ist oder seine maximale Ladeleistung erreicht hat). Das Entladen bleibt aber weiterhin gesperrt, solange die Wallbox am Laden ist.
