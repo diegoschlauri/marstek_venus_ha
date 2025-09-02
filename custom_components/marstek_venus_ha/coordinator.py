@@ -168,7 +168,7 @@ class MarstekCoordinator:
         self._wallbox_power_history.append(wb_power)
 
         # Rule 1: Always prevent battery discharge if wallbox is drawing power
-        if wb_power > 10:
+        if wb_power > 100:
             _LOGGER.debug("Wallbox is active, ensuring batteries do not discharge.")
             if self._last_power_direction == -1:
                 await self._set_all_batteries_to_zero()
@@ -203,7 +203,7 @@ class MarstekCoordinator:
                     self._wallbox_charge_paused = False
                     self._wallbox_power_history.clear()
                     # We return False to let the normal logic resume charging.
-                    # The discharge protection (Rule 1) will still apply if wb_power > 10.
+                    # The discharge protection (Rule 1) will still apply if wb_power > 100 Watt.
                     return False
 
             # If still paused, keep batteries at zero
