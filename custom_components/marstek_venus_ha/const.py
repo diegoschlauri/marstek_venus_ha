@@ -1,4 +1,4 @@
-"""Constants for the Marstek Intelligent Battery integration."""
+"""Constants for the Marstek Venus HA integration."""
 
 DOMAIN = "marstek_venus_ha"
 
