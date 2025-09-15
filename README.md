@@ -70,8 +70,8 @@ Nach der Installation können Sie die Integration über die Home Assistant UI hi
 | --- | --- | --- |
 | **ID des Netzanschluss-Leistungssensors** | Die Sensor-ID, die den aktuellen Netzbezug (+) oder die Einspeisung (-) in Watt misst. | `sensor.power_meter_power` |
 | **Leistungsglättung in Sekunden** | Zeitfenster in Sekunden, über das der Durchschnitt der Netzleistung gebildet wird. | `30` |
-| **Minimaler Überschuss** | Minimaler Leistungsüberschuss damit die Ladung staret. | `200` |
-| **Minimaler Bezug** | Minimaler Verbrauch damit die Entladung staret. | `200` |
+| **Minimaler Überschuss** | Minimaler Leistungsüberschuss in Watt damit die Ladung staret. | `200` |
+| **Minimaler Bezug** | Minimaler Verbrauch in Watt damit die Entladung staret. | `200` |
 | **Entität der ersten Batterie** | Der Basisname der Entitäten für die erste Batterie. | `marstek_batterie_1` |
 | **Entität der zweiten Batterie (Optional)** | Der Basisname für die zweite Batterie. Freilassen, wenn nicht vorhanden. | `marstek_batterie_2` |
 | **Entität der dritten Batterie (Optional)** | Der Basisname für die dritte Batterie. Freilassen, wenn nicht vorhanden. | |
