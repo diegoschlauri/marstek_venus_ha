@@ -14,6 +14,7 @@ Die Integration steuert die Batterien nicht alle gleichzeitig, sondern aktiviert
 * **Glättung der Netzleistung**: Verhindert hektisches Schalten durch Ermittlung der durchschnittlichen Netzleistung über einen konfigurierbaren Zeitraum.
 * **Optionale Wallbox-Integration**: Intelligente Pausierung des Batterieladens bei hohem PV-Überschuss. Das Laden wird wiederaufgenommen, wenn das Auto vollgeladen ist oder mit maximaler Leistung lädt, um keine Energie zu verschwenden.
 * **Konfigurierbare Grenzen**: Setzen Sie obere und untere SoC-Grenzen, um die Lebensdauer Ihrer Batterien zu schützen.
+* **Minimale Lade- und Entladeleistung**: Via Parameter steuerbar ab welchem Überschuss die Batterien zu laden und entladen beginnen um die Effizienz zu steigern.
 * **Einfache Konfiguration**: Vollständig über den Home Assistant UI-Konfigurationsflow einrichtbar.
 
 ---
@@ -23,8 +24,8 @@ Die Integration steuert die Batterien nicht alle gleichzeitig, sondern aktiviert
 Diese Integration steuert die Batterien nicht direkt über eine herstellerspezifische API. Stattdessen **müssen Sie für jede Batterie bereits Entitäten in Home Assistant haben**, um:
 1.  Den **Ladezustand (SoC)** zu lesen (z.B. `sensor.batterie_1_soc`).
 2.  Die **aktuelle Lade-/Entladeleistung** zu lesen (z.B. `sensor.batterie_1_power`). Ein positiver Wert bedeutet Laden, ein negativer Entladen.
-3.  Die **Ladeleistung** zu steuern (z.B. `number.batterie_1_ladeleistung_setzen`).
-4.  Die **Entladeleistung** zu steuern (z.B. `number.batterie_1_entladeleistung_setzen`).
+3.  Die **Ladeleistung** zu steuern (z.B. `number.batterie_1_charge_power`).
+4.  Die **Entladeleistung** zu steuern (z.B. `number.batterie_1_discharge_power`).
 
 Im Konfigurationsprozess geben Sie den **Basis-Entitätsnamen** für jede Batterie an (z.B. `batterie_1`). Die Integration leitet daraus die Namen der benötigten Entitäten ab, indem sie die Suffixe `_soc`, `_power`, `_charge_power` und `_discharge_power` erwartet.
 
@@ -69,6 +70,8 @@ Nach der Installation können Sie die Integration über die Home Assistant UI hi
 | --- | --- | --- |
 | **ID des Netzanschluss-Leistungssensors** | Die Sensor-ID, die den aktuellen Netzbezug (+) oder die Einspeisung (-) in Watt misst. | `sensor.power_meter_power` |
 | **Leistungsglättung in Sekunden** | Zeitfenster in Sekunden, über das der Durchschnitt der Netzleistung gebildet wird. | `30` |
+| **Minimaler Überschuss** | Minimaler Leistungsüberschuss damit die Ladung staret. | `200` |
+| **Minimaler Bezug** | Minimaler Verbrauch damit die Entladung staret. | `200` |
 | **Entität der ersten Batterie** | Der Basisname der Entitäten für die erste Batterie. | `marstek_batterie_1` |
 | **Entität der zweiten Batterie (Optional)** | Der Basisname für die zweite Batterie. Freilassen, wenn nicht vorhanden. | `marstek_batterie_2` |
 | **Entität der dritten Batterie (Optional)** | Der Basisname für die dritte Batterie. Freilassen, wenn nicht vorhanden. | |
