@@ -1,4 +1,4 @@
-"""Config flow for Marstek Venus HA integration."""
+"""Config flow for Marstek Venus HA Integration."""
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -9,6 +9,8 @@ from .const import (
     DOMAIN,
     CONF_GRID_POWER_SENSOR,
     CONF_SMOOTHING_SECONDS,
+    CONF_MIN_SURPLUS,
+    CONF_MIN_CONSUMPTION,
     CONF_BATTERY_1_ENTITY,
     CONF_BATTERY_2_ENTITY,
     CONF_BATTERY_3_ENTITY,
@@ -44,7 +46,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
         if user_input is not None:
             # You can add validation here if needed
-            return self.async_create_entry(title="Marstek Intelligent Battery Control", data=user_input)
+            return self.async_create_entry(title="Marstek Venus HA Integration", data=user_input)
 
         data_schema = vol.Schema(
             {
@@ -52,6 +54,8 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
                 vol.Required(CONF_SMOOTHING_SECONDS, default=DEFAULT_SMOOTHING_SECONDS): int,
+                vol.Required(CONF_MIN_SURPLUS, default=DEFAULT_MIN_SURPLUS): int,
+                vol.Required(CONF_MIN_CONSUMPTION, default=DEFAULT_MIN_CONSUMPTION): int,
                 vol.Required(CONF_BATTERY_1_ENTITY): str,
                 vol.Optional(CONF_BATTERY_2_ENTITY, default=""): str,
                 vol.Optional(CONF_BATTERY_3_ENTITY, default=""): str,
@@ -100,6 +104,20 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_SMOOTHING_SECONDS,
                     default=self.config_entry.options.get(
                         CONF_SMOOTHING_SECONDS, self.config_entry.data.get(CONF_SMOOTHING_SECONDS, DEFAULT_SMOOTHING_SECONDS)
+                    ),
+                ): int,
+                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                vol.Required(
+                    CONF_MIN_SURPLUS,
+                    default=self.config_entry.options.get(
+                        CONF_MIN_SURPLUS, self.config_entry.data.get(CONF_MIN_SURPLUS, DEFAULT_MIN_SURPLUS)
+                    ),
+                ): int,
+                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                vol.Required(
+                    CONF_MIN_CONSUMPTION,
+                    default=self.config_entry.options.get(
+                        CONF_MIN_CONSUMPTION, self.config_entry.data.get(CONF_MIN_CONSUMPTION, DEFAULT_MIN_CONSUMPTION)
                     ),
                 ): int,
                 vol.Required(
