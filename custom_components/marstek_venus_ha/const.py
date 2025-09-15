@@ -5,6 +5,8 @@ DOMAIN = "marstek_venus_ha"
 # Configuration Keys
 CONF_GRID_POWER_SENSOR = "grid_power_sensor"
 CONF_SMOOTHING_SECONDS = "smoothing_seconds"
+CONF_MIN_SURPLUS = "min_surplus"
+CONF_MIN_CONSUMPTION = "min_consumption"
 CONF_BATTERY_1_ENTITY = "battery_1_entity"
 CONF_BATTERY_2_ENTITY = "battery_2_entity"
 CONF_BATTERY_3_ENTITY = "battery_3_entity"
@@ -19,6 +21,8 @@ CONF_WALLBOX_CABLE_SENSOR = "wallbox_cable_sensor"
 
 # Default values
 DEFAULT_SMOOTHING_SECONDS = 5
+DEFAULT_MIN_SURPLUS = 200
+DEFAULT_MIN_CONSUMPTION = 200
 DEFAULT_MIN_SOC = 10
 DEFAULT_MAX_SOC = 95
 DEFAULT_POWER_STAGE_1 = 1800
