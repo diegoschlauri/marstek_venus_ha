@@ -12,6 +12,8 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN, STATE_ON
 from .const import (
     CONF_GRID_POWER_SENSOR,
     CONF_SMOOTHING_SECONDS,
+    CONF_MIN_SURPLUS,
+    CONF_MIN_CONSUMPTION,
     CONF_BATTERY_1_ENTITY,
     CONF_BATTERY_2_ENTITY,
     CONF_BATTERY_3_ENTITY,
@@ -27,7 +29,7 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-WALLBOX_POWER_STABILITY_THRESHOLD = 100  # Watt
+WALLBOX_POWER_STABILITY_THRESHOLD = 200  # Watt
 WALLBOX_RESUME_CHECK_MINUTES = 5
 
 class MarstekCoordinator:
@@ -89,7 +91,7 @@ class MarstekCoordinator:
                 timedelta(seconds=COORDINATOR_UPDATE_INTERVAL_SECONDS),
             )
             self._is_running = True
-            _LOGGER.info("Marstek Intelligent Battery coordinator started.")
+            _LOGGER.info("Marstek Venus HA Integration coordinator started.")
 
     async def async_stop_listening(self):
         """Stop the coordinator's update loop."""
@@ -98,7 +100,7 @@ class MarstekCoordinator:
             self._unsub_listener = None
         self._is_running = False
         await self._set_all_batteries_to_zero()
-        _LOGGER.info("Marstek Intelligent Battery coordinator stopped.")
+        _LOGGER.info("Marstek Venus HA Integration coordinator stopped.")
 
     def _get_entity_state(self, entity_id: str) -> State | None:
         """Safely get the state of an entity."""
@@ -114,17 +116,17 @@ class MarstekCoordinator:
         """Fetch new data and run the logic."""
         _LOGGER.debug("Coordinator update triggered.")
 
-        smoothed_power = self._get_smoothed_grid_power()
-        if smoothed_power is None:
-            _LOGGER.warning("Could not determine grid power. Skipping update cycle.")
+        real_power = self._get_real_power()
+        if real_power is None:
+            _LOGGER.warning("Could not determine real power. Skipping update cycle.")
             return
 
-        if await self._handle_wallbox_logic(smoothed_power):
+        if await self._handle_wallbox_logic(real_power):
             _LOGGER.debug("Wallbox logic took control. Ending update cycle.")
             return
         
-        await self._update_battery_priority_if_needed(smoothed_power)
-        await self._distribute_power(smoothed_power)
+        await self._update_battery_priority_if_needed(real_power)
+        await self._distribute_power(real_power)
 
     def _get_float_state(self, entity_id: str) -> float | None:
         """Safely get a float value from a state."""
@@ -153,7 +155,34 @@ class MarstekCoordinator:
         _LOGGER.debug(f"Current grid power: {current_power}W, Smoothed grid power: {avg_power:.2f}W")
         return avg_power
 
-    async def _handle_wallbox_logic(self, smoothed_grid_power: float) -> bool:
+    def _get_real_power(self) -> float | None:
+        """Get the real power of the house excluding the batteries. A positiv value means the house uses more power than it produced excluding the batteries. 
+        A negative value means the house produces more power than its acutally used excluding the batteries."""
+        smoothed_grid_power = self._get_smoothed_grid_power
+        
+        if smoothed_grid_power is None:
+            return None
+
+        # Get the current power of all batteries
+        total_battery_power = 0
+        total_battery_power = sum(
+                p for p in [
+                    self._get_float_state(f"sensor.{b}_power") for b in self._battery_entities
+                ] if p is not None and p > 0
+            )
+        
+        # Calculate real power based on batterie direction
+        if self._last_power_direction = -1 #Batteries are actually discharging 
+            real_power = (smoothed_grid_power + total_battery_power) 
+        elif self._last_power_direction = 1 #Batteries are actually charging
+            real_power = (smoothed_grid_power - total_battery_power)
+        else
+            real_power = smoothed_grid_power
+        
+        _LOGGER.debug(f"Current real power without batteries: {real_power}W")
+        return real_power
+
+    async def _handle_wallbox_logic(self, real_power: float) -> bool:
         """Implement the wallbox charging logic. Returns True if it took control."""
         wb_power_sensor = self.config.get(CONF_WALLBOX_POWER_SENSOR)
         wb_cable_sensor = self.config.get(CONF_WALLBOX_CABLE_SENSOR)
@@ -180,17 +209,9 @@ class MarstekCoordinator:
                 return True # Take control to stop discharging
 
         # Rule 2: Check if battery charging should be PAUSED for the car
-        total_battery_charge_power = sum(
-            p for p in [
-                self._get_float_state(f"sensor.{b}_power") for b in self._battery_entities
-            ] if p is not None and p > 0
-        )
         
-        # Real surplus = what goes into the grid + what goes into the batteries
-        real_surplus = -smoothed_grid_power + total_battery_charge_power
-        
-        if real_surplus > max_surplus:
-            _LOGGER.info(f"Real surplus ({real_surplus:.0f}W) > max ({max_surplus}W). Pausing battery charging.")
+        if real_power < -max_surplus:
+            _LOGGER.info(f"Real surplus ({real_surplus:.0f}W) < max ({max_surplus}W). Pausing battery charging.")
             self._wallbox_charge_paused = True
             await self._set_all_batteries_to_zero()
             return True
@@ -218,13 +239,19 @@ class MarstekCoordinator:
 
         return False
 
-    async def _update_battery_priority_if_needed(self, current_power: float):
+    async def _update_battery_priority_if_needed(self, real_power: float):
         """Check conditions and update battery priority list."""
+        min_surplus_for_check = self.config_entry.data.get(CONF_MIN_SURPLUS, DEFAULT_MIN_SURPLUS)
+        min_consumption_for_check = self.config_entry.data.get(CONF_MIN_CONSUMPTION, DEFAULT_MIN_CONSUMPTION)
+        
+        # power direction: 1 for charging, -1 for discharging, 0 for neutral
         power_direction = 0
-        if current_power < -50:
-            power_direction = 1
-        elif current_power > 50:
-            power_direction = -1
+
+        # decide the new direction
+        if real_power  < -abs(min_surplus_for_check):
+            power_direction = 1 # charging
+        elif real_power  > abs(min_consumption_for_check):
+            power_direction = -1 # discharging
 
         priority_interval = timedelta(minutes=self.config.get(CONF_PRIORITY_INTERVAL))
         time_since_last_update = datetime.now() - self._last_priority_update
