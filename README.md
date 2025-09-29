@@ -84,8 +84,7 @@ Nach der Installation können Sie die Integration über die Home Assistant UI hi
 | **Zeitintervall der Prioritätsermittlung (Minuten)** | Intervall, in dem die Priorität der Batterien neu bewertet wird. | `15` |
 | **ID des Leistungssensors der Wallbox (Optional)**| Der Sensor, der die Ladeleistung der Wallbox misst. | `sensor.wallbox_power` |
 | **Wallbox maximaler Überschuss (W) (Optional)**| Beträgt der PV-Überschuss mehr als diesen Wert, wird das Laden der Batterien pausiert. | `1500` |
-| **Wallbox-Sensor für eingestecktes Kabel (Optional)**| Ein Binärsensor (`on`/`off`), der anzeigt, ob ein Ladekabel angeschlossen ist. | 
-`binary_sensor.wallbox_cable_plugged_in` |
+| **Wallbox-Sensor für eingestecktes Kabel (Optional)**| Ein Binärsensor (`on`/`off`), der anzeigt, ob ein Ladekabel angeschlossen ist. | `binary_sensor.wallbox_cable_plugged_in` |
 | **Wallbox Leistungsschwankung(W) für Batterieladefreigabe (Optional)**| Spatzung für Leistungsschwankungen der Wallbox. Sobald die Leistung in den letzten X Sekunden nicht über diesen Wert zugenommen hat, wird das Laden der Batterien wieder ermöglicht. | `200` |
 | **Wallbox Aktualisierungs-Zeit für Batterieladefreigabe in Sekunden (Optional)**| Anzahl Minuten bis die Batterien wieder fürs Laden freigebgen werden wenn der Leistungsschwankungswert nicht übertroffen wird. | `300` |
 
