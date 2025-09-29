@@ -87,7 +87,7 @@ Nach der Installation können Sie die Integration über die Home Assistant UI hi
 | **Wallbox-Sensor für eingestecktes Kabel (Optional)**| Ein Binärsensor (`on`/`off`), der anzeigt, ob ein Ladekabel angeschlossen ist. | `binary_sensor.wallbox_cable_plugged_in` |
 | **Wallbox Leistungsschwankung(W) für Batterieladefreigabe (Optional)**| Spatzung für Leistungsschwankungen der Wallbox. Sobald die Leistung in den letzten X Sekunden nicht über diesen Wert zugenommen hat, wird das Laden der Batterien wieder ermöglicht. | `200` |
 | **Wallbox Aktualisierungs-Zeit für Batterieladefreigabe in Sekunden (Optional)**| Anzahl Sekunden bis die Batterien wieder fürs Laden freigebgen werden wenn der Leistungsschwankungswert nicht übertroffen wird. | `300` |
-| **Wallbox Delay in Sekunden (Optional)**| Anzahl Sekunden, welche gewartet wird bis die Battrien wieder freigegeben werden, wenn ein Auto eingesteckt ist aber nicht zu laden beginnt. Ist auch relevant für eine Phasenumschaltung der Wallbox. | `120` |
+| **Wallbox Delay in Sekunden (Optional)**| Anzahl Sekunden, welche gewartet wird, bis die Batterien wieder freigegeben werden. Dies kommt zum Zug wenn ein Auto eingesteckt ist, aber nicht zu laden beginnt. Dieser Wert ist auch relevant für die Phasenumschaltung der Wallbox. | `120` |
 
 ---
 
