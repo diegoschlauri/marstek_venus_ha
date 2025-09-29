@@ -19,18 +19,20 @@ from .const import (
     CONF_BATTERY_3_ENTITY,
     CONF_MIN_SOC,
     CONF_MAX_SOC,
-    CONF_POWER_STAGE_1,
-    CONF_POWER_STAGE_2,
+    CONF_POWER_STAGE_DISCHARGE_1,
+    CONF_POWER_STAGE_DISCHARGE_2,
+    CONF_POWER_STAGE_CHARGE_1,
+    CONF_POWER_STAGE_CHARGE_2,
     CONF_PRIORITY_INTERVAL,
     CONF_WALLBOX_POWER_SENSOR,
     CONF_WALLBOX_MAX_SURPLUS,
     CONF_WALLBOX_CABLE_SENSOR,
+    CONF_WALLBOX_POWER_STABILITY_THRESHOLD,
+    CONF_WALLBOX_RESUME_CHECK_SECONDS,
     COORDINATOR_UPDATE_INTERVAL_SECONDS,
 )
 
 _LOGGER = logging.getLogger(__name__)
-WALLBOX_POWER_STABILITY_THRESHOLD = 200  # Watt
-WALLBOX_RESUME_CHECK_MINUTES = 5
 
 class MarstekCoordinator:
     """The main coordinator for handling battery logic."""
@@ -46,7 +48,7 @@ class MarstekCoordinator:
         self.config.update(entry.options)
 
         self._is_running = False
-        self._unsub_listener = Non
+        self._unsub_listener = None
 
         # State variables
         self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
@@ -72,7 +74,7 @@ class MarstekCoordinator:
         if mode == "smoothing":
             seconds = self.config.get(CONF_SMOOTHING_SECONDS)
         elif mode == "wallbox":
-            seconds = WALLBOX_RESUME_CHECK_MINUTES * 60
+            seconds = self.config.get(CONF_WALLBOX_RESUME_CHECK_SECONDS)
         else:
             return 1
             
@@ -84,7 +86,7 @@ class MarstekCoordinator:
             # Re-initialize deques on start
             self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
             self._wallbox_power_history = deque(maxlen=self._get_deque_size("wallbox"))
-
+            await self._set_all_batteries_to_zero # Reset Batteries to 0 on Start-Up
             self._unsub_listener = async_track_time_interval(
                 self.hass,
                 self._async_update,
@@ -126,7 +128,7 @@ class MarstekCoordinator:
             return
         
         await self._update_battery_priority_if_needed(real_power)
-        await self._distribute_power(real_power)
+        await self._distribute_power(real_power, self._last_power_direction)
 
     def _get_float_state(self, entity_id: str) -> float | None:
         """Safely get a float value from a state."""
@@ -172,11 +174,11 @@ class MarstekCoordinator:
             )
         
         # Calculate real power based on batterie direction
-        if self._last_power_direction = -1 #Batteries are actually discharging 
+        if self._last_power_direction == -1: #Batteries are actually discharging 
             real_power = (smoothed_grid_power + total_battery_power) 
-        elif self._last_power_direction = 1 #Batteries are actually charging
+        elif self._last_power_direction == 1: #Batteries are actually charging
             real_power = (smoothed_grid_power - total_battery_power)
-        else
+        else:
             real_power = smoothed_grid_power
         
         _LOGGER.debug(f"Current real power without batteries: {real_power}W")
@@ -187,6 +189,7 @@ class MarstekCoordinator:
         wb_power_sensor = self.config.get(CONF_WALLBOX_POWER_SENSOR)
         wb_cable_sensor = self.config.get(CONF_WALLBOX_CABLE_SENSOR)
         max_surplus = self.config.get(CONF_WALLBOX_MAX_SURPLUS)
+        stability_treshold = self.config.get(CONF_WALLBOX_POWER_STABILITY_THRESHOLD)
 
         if not all([wb_power_sensor, wb_cable_sensor, max_surplus is not None]):
             self._wallbox_charge_paused = False
@@ -209,9 +212,8 @@ class MarstekCoordinator:
                 return True # Take control to stop discharging
 
         # Rule 2: Check if battery charging should be PAUSED for the car
-        
         if real_power < -max_surplus:
-            _LOGGER.info(f"Real surplus ({real_surplus:.0f}W) < max ({max_surplus}W). Pausing battery charging.")
+            _LOGGER.info(f"Real surplus ({real_power:.0f}W) < max ({max_surplus}W). Pausing battery charging.")
             self._wallbox_charge_paused = True
             await self._set_all_batteries_to_zero()
             return True
@@ -224,7 +226,7 @@ class MarstekCoordinator:
                 power_increase = wb_power - oldest_power
                 
                 # If power has not increased significantly, car is likely full or at max rate
-                if power_increase < WALLBOX_POWER_STABILITY_THRESHOLD:
+                if power_increase < stability_treshold:
                     _LOGGER.info(f"Wallbox power has stabilized. Resuming battery charging logic.")
                     self._wallbox_charge_paused = False
                     self._wallbox_power_history.clear()
@@ -241,8 +243,8 @@ class MarstekCoordinator:
 
     async def _update_battery_priority_if_needed(self, real_power: float):
         """Check conditions and update battery priority list."""
-        min_surplus_for_check = self.config_entry.data.get(CONF_MIN_SURPLUS, DEFAULT_MIN_SURPLUS)
-        min_consumption_for_check = self.config_entry.data.get(CONF_MIN_CONSUMPTION, DEFAULT_MIN_CONSUMPTION)
+        min_surplus_for_check = self.config_entry.data.get(CONF_MIN_SURPLUS, 50)
+        min_consumption_for_check = self.config_entry.data.get(CONF_MIN_CONSUMPTION, 50)
         
         # power direction: 1 for charging, -1 for discharging, 0 for neutral
         power_direction = 0
@@ -289,11 +291,15 @@ class MarstekCoordinator:
         self._battery_priority = sorted(available_batteries, key=lambda x: x['soc'], reverse=is_reverse)
         _LOGGER.debug(f"New battery priority: {self._battery_priority}")
 
-    async def _distribute_power(self, power: float):
+    async def _distribute_power(self, power: float, power_direction: int):
         """Control battery charge/discharge based on power stages."""
         abs_power = abs(power)
-        stage1 = self.config.get(CONF_POWER_STAGE_1)
-        stage2 = self.config.get(CONF_POWER_STAGE_2)
+        if power_direction == -1: #Currently Discharging
+            stage1 = self.config.get(CONF_POWER_STAGE_DISCHARGE_1)
+            stage2 = self.config.get(CONF_POWER_STAGE_DISCHARGE_2)
+        else:
+            stage1 = self.config.get(CONF_POWER_STAGE_CHARGE_1)
+            stage2 = self.config.get(CONF_POWER_STAGE_CHARGE_2)
         
         num_available = len(self._battery_priority)
         if num_available == 0 or self._last_power_direction == 0:

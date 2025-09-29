@@ -77,12 +77,17 @@ Nach der Installation können Sie die Integration über die Home Assistant UI hi
 | **Entität der dritten Batterie (Optional)** | Der Basisname für die dritte Batterie. Freilassen, wenn nicht vorhanden. | |
 | **Untere Entladegrenze der Batterien (%)** | Die Batterien werden nicht mehr entladen, wenn ihr SoC diesen Wert erreicht. | `10` |
 | **Obere Ladegrenze der Batterien (%)** | Die Batterien werden nicht mehr geladen, wenn ihr SoC diesen Wert erreicht. | `95` |
-| **Erste Leistungsstufe (W)** | Netzbezug/-einspeisung, ab dem eine zweite Batterie zugeschaltet wird. | `2000` |
-| **Zweite Leistungsstufe (W)** | Netzbezug/-einspeisung, ab dem eine dritte Batterie zugeschaltet wird. | `4000` |
+| **Erste Entlade-Leistungsstufe (W)** | Netzbezug, ab dem eine zweite Batterie zugeschaltet wird. | `600` |
+| **Zweite Entlade-Leistungsstufe (W)** | Netzbezug, ab dem eine dritte Batterie zugeschaltet wird. | `1200` |
+| **Erste Lade-Leistungsstufe (W)** | Netzeinspeisung, ab dem eine zweite Batterie zugeschaltet wird. | `2000` |
+| **Zweite Lade-Leistungsstufe (W)** | Netzeinspeisung, ab dem eine dritte Batterie zugeschaltet wird. | `4000` |
 | **Zeitintervall der Prioritätsermittlung (Minuten)** | Intervall, in dem die Priorität der Batterien neu bewertet wird. | `15` |
 | **ID des Leistungssensors der Wallbox (Optional)**| Der Sensor, der die Ladeleistung der Wallbox misst. | `sensor.wallbox_power` |
 | **Wallbox maximaler Überschuss (W) (Optional)**| Beträgt der PV-Überschuss mehr als diesen Wert, wird das Laden der Batterien pausiert. | `1500` |
-| **Wallbox-Sensor für eingestecktes Kabel (Optional)**| Ein Binärsensor (`on`/`off`), der anzeigt, ob ein Ladekabel angeschlossen ist. | `binary_sensor.wallbox_cable_plugged_in` |
+| **Wallbox-Sensor für eingestecktes Kabel (Optional)**| Ein Binärsensor (`on`/`off`), der anzeigt, ob ein Ladekabel angeschlossen ist. | 
+`binary_sensor.wallbox_cable_plugged_in` |
+| **Wallbox Leistungsschwankung(W) für Batterieladefreigabe (Optional)**| Spatzung für Leistungsschwankungen der Wallbox. Sobald die Leistung in den letzten X Sekunden nicht über diesen Wert zugenommen hat, wird das Laden der Batterien wieder ermöglicht. | `200` |
+| **Wallbox Aktualisierungs-Zeit für Batterieladefreigabe in Sekunden (Optional)**| Anzahl Minuten bis die Batterien wieder fürs Laden freigebgen werden wenn der Leistungsschwankungswert nicht übertroffen wird. | `300` |
 
 ---
 
@@ -105,4 +110,4 @@ Die absolute Netzleistung (`abs(power)`) bestimmt die Anzahl der aktiven Batteri
 
 * **Entladeschutz**: Sobald die Wallbox Strom zieht (`Leistung > 10W`), wird das Entladen **aller** Batterien sofort gestoppt.
 * **Ladevorrang für das Auto**: Wenn der **reale PV-Überschuss** (Netzeinspeisung + aktuelle Batterieladeleistung) den konfigurierten Schwellenwert übersteigt, wird das Laden der Heimbatterien pausiert, um dem Auto Vorrang zu geben.
-* **Intelligente Lade-Wiederaufnahme**: Das Laden der Batterien wird wieder freigegeben, wenn die Ladeleistung der Wallbox für 5 Minuten stagniert (z.B. weil das Auto voll ist oder seine maximale Ladeleistung erreicht hat). Das Entladen bleibt aber weiterhin gesperrt, solange die Wallbox am Laden ist.
+* **Intelligente Lade-Wiederaufnahme**: Das Laden der Batterien wird wieder freigegeben, wenn die Ladeleistung der Wallbox für X-Sekunden stagniert (z.B. weil das Auto voll ist oder seine maximale Ladeleistung erreicht hat). Das Entladen bleibt aber weiterhin gesperrt, solange die Wallbox am Laden ist.
