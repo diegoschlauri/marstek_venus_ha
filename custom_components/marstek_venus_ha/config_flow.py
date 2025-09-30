@@ -47,8 +47,6 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Marstek Venus HA."""
 
     VERSION = 1
-    @staticmethod
-    @callback
     def async_get_options_flow(self, config_entry):
         """Get the options flow for this handler."""
         return MarstekOptionsFlowHandler(config_entry)
