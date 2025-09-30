@@ -268,8 +268,8 @@ class MarstekCoordinator:
 
     async def _update_battery_priority_if_needed(self, real_power: float):
         """Check conditions and update battery priority list."""
-        min_surplus_for_check = self.config_entry.data.get(CONF_MIN_SURPLUS, 50)
-        min_consumption_for_check = self.config_entry.data.get(CONF_MIN_CONSUMPTION, 50)
+        min_surplus_for_check = self.config.get(CONF_MIN_SURPLUS, 50)
+        min_consumption_for_check = self.config.get(CONF_MIN_CONSUMPTION, 50)
         
         # power direction: 1 for charging, -1 for discharging, 0 for neutral
         power_direction = 0
