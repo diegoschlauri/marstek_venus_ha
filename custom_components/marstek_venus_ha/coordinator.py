@@ -87,7 +87,7 @@ class MarstekCoordinator:
             # Re-initialize deques on start
             self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
             self._wallbox_power_history = deque(maxlen=self._get_deque_size("wallbox"))
-            await self._set_all_batteries_to_zero # Reset Batteries to 0 on Start-Up
+            await self._set_all_batteries_to_zero() # Reset Batteries to 0 on Start-Up
             self._unsub_listener = async_track_time_interval(
                 self.hass,
                 self._async_update,
