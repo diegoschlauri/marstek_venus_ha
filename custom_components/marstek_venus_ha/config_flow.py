@@ -48,12 +48,6 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    @staticmethod
-    @callback
-    def async_get_options_flow(config_entry):
-        """Get the options flow for this handler."""
-        return MarstekOptionsFlowHandler(config_entry)
-
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
         errors = {}
