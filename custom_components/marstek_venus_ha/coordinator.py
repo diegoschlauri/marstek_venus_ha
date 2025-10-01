@@ -204,7 +204,7 @@ class MarstekCoordinator:
         total_battery_power = 0
         total_battery_power = sum(
                 p for p in [
-                    self._get_float_state(f"sensor.{b}_power") for b in self._battery_entities
+                    self._get_float_state(f"sensor.{b}_ac_power") for b in self._battery_entities
                 ] if p is not None and p > 0
             )
         
@@ -337,7 +337,7 @@ class MarstekCoordinator:
         
         available_batteries = []
         for base_entity_id in self._battery_entities:
-            soc = self._get_float_state(f"sensor.{base_entity_id}_soc")
+            soc = self._get_float_state(f"sensor.{base_entity_id}_battery_soc")
             if soc is None:
                 continue
 
@@ -390,26 +390,23 @@ class MarstekCoordinator:
 
     async def _set_battery_power(self, base_entity_id: str, power: int, direction: int):
         """Set the charge or discharge power for a single battery."""
-        charge_entity = f"number.{base_entity_id}_charge_power"
-        discharge_entity = f"number.{base_entity_id}_discharge_power"
+        power_entity = f"number.{base_entity_id}_discharge_charge_power"
+        # discharge_entity = f"number.{base_entity_id}_discharge_charge_power"
         
         try:
             if direction == 1:
-                await self.hass.services.async_call("number", "set_value", {"entity_id": charge_entity, "value": power}, blocking=True)
-                await self.hass.services.async_call("number", "set_value", {"entity_id": discharge_entity, "value": 0}, blocking=True)
+                await self.hass.services.async_call("number", "set_value", {"entity_id": power_entity, "value": power}, blocking=True)
             elif direction == -1:
-                await self.hass.services.async_call("number", "set_value", {"entity_id": charge_entity, "value": 0}, blocking=True)
-                await self.hass.services.async_call("number", "set_value", {"entity_id": discharge_entity, "value": power}, blocking=True)
+                await self.hass.services.async_call("number", "set_value", {"entity_id": power_entity, "value": -power}, blocking=True)
             else:
-                await self.hass.services.async_call("number", "set_value", {"entity_id": charge_entity, "value": 0}, blocking=True)
-                await self.hass.services.async_call("number", "set_value", {"entity_id": discharge_entity, "value": 0}, blocking=True)
+                await self.hass.services.async_call("number", "set_value", {"entity_id": power_entity, "value": 0}, blocking=True)
             # Add a small delay to prevent overwhelming the device APIs
             await asyncio.sleep(0.1)
         except Exception as e:
             _LOGGER.error(f"Failed to set power for {base_entity_id}: {e}")
 
     async def _set_all_batteries_to_zero(self):
-        """Set all configured batteries to 0 charge and discharge power."""
+        """Set all configured batteries power to 0."""
         _LOGGER.debug("Setting all batteries to 0W.")
         tasks = [self._set_battery_power(b_id, 0, 0) for b_id in self._battery_entities]
         await asyncio.gather(*tasks)
