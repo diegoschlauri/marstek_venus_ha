@@ -82,7 +82,7 @@ class MarstekCoordinator:
         return max(1, seconds // COORDINATOR_UPDATE_INTERVAL_SECONDS)
 
     async def wait_for_entity_available(hass, entity_id, timeout=60):
-    """Wait until the entity is available or timeout."""
+        """Wait until the entity is available or timeout."""
         event = asyncio.Event()
     
         def _listener(entity, old_state, new_state):
