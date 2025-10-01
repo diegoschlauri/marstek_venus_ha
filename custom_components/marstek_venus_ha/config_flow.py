@@ -72,8 +72,8 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_BATTERY_1_ENTITY): str,
                 vol.Optional(CONF_BATTERY_2_ENTITY, default=""): str,
                 vol.Optional(CONF_BATTERY_3_ENTITY, default=""): str,
-                vol.Required(CONF_MIN_SOC, default=DEFAULT_MIN_SOC): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
-                vol.Required(CONF_MAX_SOC, default=DEFAULT_MAX_SOC): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+                vol.Required(CONF_MIN_SOC, default=DEFAULT_MIN_SOC): int,
+                vol.Required(CONF_MAX_SOC, default=DEFAULT_MAX_SOC): int,
                 vol.Required(CONF_POWER_STAGE_DISCHARGE_1, default=DEFAULT_POWER_STAGE_DISCHARGE_1): int,
                 vol.Required(CONF_POWER_STAGE_DISCHARGE_2, default=DEFAULT_POWER_STAGE_DISCHARGE_2): int,
                 vol.Required(CONF_POWER_STAGE_CHARGE_1, default=DEFAULT_POWER_STAGE_CHARGE_1): int,
@@ -159,13 +159,13 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                     default=self.config_entry.options.get(
                         CONF_MIN_SOC, self.config_entry.data.get(CONF_MIN_SOC, DEFAULT_MIN_SOC)
                     ),
-                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+                ): int,
                 vol.Required(
                     CONF_MAX_SOC,
                     default=self.config_entry.options.get(
                         CONF_MAX_SOC, self.config_entry.data.get(CONF_MAX_SOC, DEFAULT_MAX_SOC)
                     ),
-                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+                ): int,
                 vol.Required(
                     CONF_POWER_STAGE_DISCHARGE_1,
                     default=self.config_entry.options.get(
