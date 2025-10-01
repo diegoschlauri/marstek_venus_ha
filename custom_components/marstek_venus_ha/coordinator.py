@@ -81,7 +81,7 @@ class MarstekCoordinator:
             
         return max(1, seconds // COORDINATOR_UPDATE_INTERVAL_SECONDS)
 
-    async def wait_for_entity_available(hass, entity_id, timeout=60):
+    async def wait_for_entity_available(self, entity_id, timeout=60):
         """Wait until the entity is available or timeout."""
         event = asyncio.Event()
     
@@ -90,11 +90,11 @@ class MarstekCoordinator:
                 event.set()
     
         # Check if already available
-        state = hass.states.get(entity_id)
+        state = self.hass.states.get(entity_id)
         if state and state.state not in ("unavailable", "unknown"):
             return
     
-        remove = hass.helpers.event.async_track_state_change(entity_id, _listener)
+        remove = self.hass.helpers.event.async_track_state_change(entity_id, _listener)
         try:
             await asyncio.wait_for(event.wait(), timeout=timeout)
         except asyncio.TimeoutError:
@@ -106,12 +106,12 @@ class MarstekCoordinator:
         """Start the coordinator's update loop."""
         # Wait for grid_power_sensor
         grid_power_sensor = self.config.get(CONF_GRID_POWER_SENSOR)
-        await self.wait_for_entity_available(self.hass, grid_power_sensor)
+        await self.wait_for_entity_available(grid_power_sensor)
     
         # Wait for wallbox_cable_sensor if defined
         wallbox_cable_sensor = self.config.get(CONF_WALLBOX_CABLE_SENSOR)
         if wallbox_cable_sensor:
-            await self.wait_for_entity_available(self.hass, wallbox_cable_sensor)
+            await self.wait_for_entity_available(wallbox_cable_sensor)
             
         if not self._is_running:
             # Re-initialize deques on start
