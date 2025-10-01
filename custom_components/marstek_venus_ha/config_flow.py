@@ -47,7 +47,10 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Marstek Venus HA."""
 
     VERSION = 1
-    def async_get_options_flow(self, config_entry):
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
         """Get the options flow for this handler."""
         return MarstekOptionsFlowHandler(config_entry)
 
@@ -105,8 +108,8 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        # Erstelle das Schema und fülle es mit den Werten aus den 'options',
-        # mit einem Fallback auf die ursprünglichen 'data'.
+        # Create the schema and fill it with values from 'options',
+        # with a fallback to the original 'data'.
         options_schema = vol.Schema(
             {
                 vol.Required(
