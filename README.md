@@ -22,19 +22,21 @@ Die Integration steuert die Batterien nicht alle gleichzeitig, sondern aktiviert
 ## !! Wichtige Voraussetzung !!
 
 Diese Integration steuert die Batterien nicht direkt über eine herstellerspezifische API. Stattdessen **müssen Sie für jede Batterie bereits Entitäten in Home Assistant haben**, um:
-1.  Den **Ladezustand (SoC)** zu lesen (z.B. `sensor.batterie_1_soc`).
-2.  Die **aktuelle Lade-/Entladeleistung** zu lesen (z.B. `sensor.batterie_1_power`). Ein positiver Wert bedeutet Laden, ein negativer Entladen.
-3.  Die **Ladeleistung** zu steuern (z.B. `number.batterie_1_charge_power`).
-4.  Die **Entladeleistung** zu steuern (z.B. `number.batterie_1_discharge_power`).
+1.  Den **Ladezustand (SoC)** zu lesen (z.B. `sensor.marstek_1_battery_soc`).
+2.  Die **aktuelle Lade-/Entladeleistung** zu lesen (z.B. `sensor.marstek_1_ac_power`). Ein positiver Wert bedeutet Laden, ein negativer Entladen.
+4.  Die **Lade und Entladeleistung** zu steuern (z.B. `number.marstek_1_discharging_charging_power`).
 
-Im Konfigurationsprozess geben Sie den **Basis-Entitätsnamen** für jede Batterie an (z.B. `batterie_1`). Die Integration leitet daraus die Namen der benötigten Entitäten ab, indem sie die Suffixe `_soc`, `_power`, `_charge_power` und `_discharge_power` erwartet.
+Im Konfigurationsprozess geben Sie den **Basis-Entitätsnamen** für jede Batterie an (z.B. `marstek_1`). Die Integration leitet daraus die Namen der benötigten Entitäten ab, indem sie die Suffixe `_battery_soc`, `_ac_power` und `_discharging_charging_power` erwartet.
+
+Als Basis für die Integration eines Marstek Energiespeichers wurden die Modbus-Definitionen von https://github.com/reschcloud/marstek_venus_e_modbus_home_assistant genommen.
+Je nach Anwendungsfall kann es sinnvoll sein den scan_interval für marstek_ac_power von 10 auf 1 herab zu setzen.
+Werden mehrere Batterien verwendet kann dies entweder mit mehreren Modbus Adapter und seperaten IP-Adressen oder mit einem Adapter und mehreren slaves gemacht werden.
 
 **Beispiel:**
-Wenn Sie als Entität für die erste Batterie `marstek_venus_e_x` angeben, muss die Integration folgende Entitäten finden können:
-* `sensor.marstek_venus_e_x_soc`
-* `sensor.marstek_venus_e_x_power` **(Wichtig für die Wallbox-Logik)**
-* `number.marstek_venus_e_x_charge_power`
-* `number.marstek_venus_e_x_discharge_power`
+Wenn Sie als Entität für die erste Batterie `marstek_1` angeben, muss die Integration folgende Entitäten finden können:
+* `sensor.marstek_1_battery_soc`
+* `sensor.marstek_1_ac_power` **(Wichtig für die Wallbox-Logik)**
+* `number.marstek_1_discharging_charging_power`
 
 Stellen Sie sicher, dass diese Entitäten vorhanden und funktionsfähig sind, bevor Sie die Integration einrichten.
 
@@ -72,9 +74,9 @@ Nach der Installation können Sie die Integration über die Home Assistant UI hi
 | **Leistungsglättung in Sekunden** | Zeitfenster in Sekunden, über das der Durchschnitt der Netzleistung gebildet wird. | `30` |
 | **Minimaler Überschuss** | Minimaler Leistungsüberschuss in Watt damit die Ladung staret. | `200` |
 | **Minimaler Bezug** | Minimaler Verbrauch in Watt damit die Entladung staret. | `200` |
-| **Entität der ersten Batterie** | Der Basisname der Entitäten für die erste Batterie. | `marstek_batterie_1` |
-| **Entität der zweiten Batterie (Optional)** | Der Basisname für die zweite Batterie. Freilassen, wenn nicht vorhanden. | `marstek_batterie_2` |
-| **Entität der dritten Batterie (Optional)** | Der Basisname für die dritte Batterie. Freilassen, wenn nicht vorhanden. | |
+| **Entität der ersten Batterie** | Der Basisname der Entitäten für die erste Batterie. | `marstek_1` |
+| **Entität der zweiten Batterie (Optional)** | Der Basisname für die zweite Batterie. Freilassen, wenn nicht vorhanden. | `marstek_2` |
+| **Entität der dritten Batterie (Optional)** | Der Basisname für die dritte Batterie. Freilassen, wenn nicht vorhanden. | `marstek_3` |
 | **Untere Entladegrenze der Batterien (%)** | Die Batterien werden nicht mehr entladen, wenn ihr SoC diesen Wert erreicht. | `10` |
 | **Obere Ladegrenze der Batterien (%)** | Die Batterien werden nicht mehr geladen, wenn ihr SoC diesen Wert erreicht. | `95` |
 | **Erste Entlade-Leistungsstufe (W)** | Netzbezug, ab dem eine zweite Batterie zugeschaltet wird. | `600` |
