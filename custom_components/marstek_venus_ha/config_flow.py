@@ -92,7 +92,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             
     @staticmethod
-    def async_get_options_flow():
+    def async_get_options_flow(config_entry):
         """Get the options flow for this handler."""
         return MarstekOptionsFlowHandler()
 
