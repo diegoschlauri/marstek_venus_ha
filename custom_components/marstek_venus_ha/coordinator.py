@@ -161,7 +161,7 @@ class MarstekCoordinator:
     def _get_real_power(self) -> float | None:
         """Get the real power of the house excluding the batteries. A positiv value means the house uses more power than it produced excluding the batteries. 
         A negative value means the house produces more power than its acutally used excluding the batteries."""
-        smoothed_grid_power = self._get_smoothed_grid_power
+        smoothed_grid_power = self._get_smoothed_grid_power()
         
         if smoothed_grid_power is None:
             return None
