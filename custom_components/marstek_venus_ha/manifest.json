@@ -7,7 +7,7 @@
   "codeowners": ["@diegoschlauri"],
   "config_flow": true,
   "iot_class": "local_polling",
-  "icon": "icon.png",
   "requirements": [],
-  "dependencies": []
+  "dependencies": [],
+  "logo": "https://raw.githubusercontent.com/diegoschlauri/marstek_venus_ha/main/custom_components/marstek_venus_ha/icon.png"
 }
