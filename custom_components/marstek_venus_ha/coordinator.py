@@ -106,12 +106,12 @@ class MarstekCoordinator:
         """Start the coordinator's update loop."""
         # Wait for grid_power_sensor
         grid_power_sensor = self.config.get(CONF_GRID_POWER_SENSOR)
-        await wait_for_entity_available(self.hass, grid_power_sensor)
+        await self.wait_for_entity_available(self.hass, grid_power_sensor)
     
         # Wait for wallbox_cable_sensor if defined
         wallbox_cable_sensor = self.config.get(CONF_WALLBOX_CABLE_SENSOR)
         if wallbox_cable_sensor:
-            await wait_for_entity_available(self.hass, wallbox_cable_sensor)
+            await self.wait_for_entity_available(self.hass, wallbox_cable_sensor)
             
         if not self._is_running:
             # Re-initialize deques on start
