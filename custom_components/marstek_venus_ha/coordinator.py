@@ -83,14 +83,14 @@ class MarstekCoordinator:
 
     async def wait_for_entity_available(self, entity_id, timeout=60):
         """Wait until the entity is available or timeout."""
-        event = asyncio.Event()
+        wait_event = asyncio.Event()
     
         def _listener(event):
             entity_id = event.data.get("entity_id")
             new_state = event.data.get("new_state")
             old_state = event.data.get("old_state")
             if new_state and new_state.state not in ("unavailable", "unknown"):
-                event.set()
+                wait_event.set()
     
         # Check if already available
         state = self.hass.states.get(entity_id)
@@ -100,7 +100,7 @@ class MarstekCoordinator:
         remove = async_track_state_change_event(self.hass, [entity_id], _listener)
 
         try:
-            await asyncio.wait_for(event.wait(), timeout=timeout)
+            await asyncio.wait_for(wait_event.wait(), timeout=timeout)
         except asyncio.TimeoutError:
             pass
         finally:
