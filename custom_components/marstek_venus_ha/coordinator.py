@@ -6,7 +6,7 @@ import asyncio
 
 from homeassistant.core import HomeAssistant, State
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import async_track_time_interval, async_track_state_change
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN, STATE_ON
 
 from .const import (
@@ -94,7 +94,8 @@ class MarstekCoordinator:
         if state and state.state not in ("unavailable", "unknown"):
             return
     
-        remove = self.hass.helpers.event.async_track_state_change(entity_id, _listener)
+        remove = async_track_state_change(self.hass, entity_id, _listener)
+
         try:
             await asyncio.wait_for(event.wait(), timeout=timeout)
         except asyncio.TimeoutError:
