@@ -86,9 +86,9 @@ Nach der Installation können Sie die Integration über die Home Assistant UI hi
 | **Leistungsglättung in Sekunden** | Zeitfenster in Sekunden, über das der Durchschnitt der Netzleistung gebildet wird. | `30` |
 | **Minimaler Überschuss** | Minimaler Leistungsüberschuss in Watt damit die Ladung staret. | `200` |
 | **Minimaler Bezug** | Minimaler Verbrauch in Watt damit die Entladung staret. | `200` |
-| **Entität der ersten Batterie** | Der Basisname der Entitäten für die erste Batterie. | `marstek_1` |
-| **Entität der zweiten Batterie (Optional)** | Der Basisname für die zweite Batterie. Freilassen, wenn nicht vorhanden. | `marstek_2` |
-| **Entität der dritten Batterie (Optional)** | Der Basisname für die dritte Batterie. Freilassen, wenn nicht vorhanden. | `marstek_3` |
+| **Entität der ersten Batterie** | Der Basisname der Entitäten für die erste Batterie. | `marstek_l1` |
+| **Entität der zweiten Batterie (Optional)** | Der Basisname für die zweite Batterie. Freilassen, wenn nicht vorhanden. | `marstek_l2` |
+| **Entität der dritten Batterie (Optional)** | Der Basisname für die dritte Batterie. Freilassen, wenn nicht vorhanden. | `marstek_l3` |
 | **Untere Entladegrenze der Batterien (%)** | Die Batterien werden nicht mehr entladen, wenn ihr SoC diesen Wert erreicht. | `10` |
 | **Obere Ladegrenze der Batterien (%)** | Die Batterien werden nicht mehr geladen, wenn ihr SoC diesen Wert erreicht. | `95` |
 | **Erste Entlade-Leistungsstufe (W)** | Netzbezug, ab dem eine zweite Batterie zugeschaltet wird. | `600` |

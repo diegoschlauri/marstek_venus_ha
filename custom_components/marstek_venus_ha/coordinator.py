@@ -30,7 +30,7 @@ from .const import (
     CONF_WALLBOX_POWER_STABILITY_THRESHOLD,
     CONF_WALLBOX_RESUME_CHECK_SECONDS,
     CONF_WALLBOX_START_DELAY_SECONDS,
-    COORDINATOR_UPDATE_INTERVAL_SECONDS
+    CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ class MarstekCoordinator:
         else:
             return 1
             
-        return max(1, seconds // COORDINATOR_UPDATE_INTERVAL_SECONDS)
+        return max(1, seconds // CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS)
 
     async def wait_for_entity_available(self, entity_id, timeout=60):
         """Wait until the entity is available or timeout."""
@@ -125,7 +125,7 @@ class MarstekCoordinator:
             self._unsub_listener = async_track_time_interval(
                 self.hass,
                 self._async_update,
-                timedelta(seconds=COORDINATOR_UPDATE_INTERVAL_SECONDS),
+                timedelta(seconds=CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS),
             )
             self._is_running = True
             _LOGGER.info("Marstek Venus HA Integration coordinator started.")
@@ -236,8 +236,24 @@ class MarstekCoordinator:
             self._wallbox_charge_paused = False
             self._wallbox_power_history.clear()
             return False
-
-        wb_power = self._get_float_state(wb_power_sensor) or 0.0
+        # Get the wallbox power state to check its unit
+        wb_power = 0.0
+        wb_power_state = self._get_entity_state(wb_power_sensor)
+        if wb_power_state:
+            try:
+                # Try to convert state to float
+                wb_power = float(wb_power_state.state)
+                
+                # Check the unit of measurement
+                unit = wb_power_state.attributes.get("unit_of_measurement")
+                if unit and unit.lower() == 'kw':
+                    # Convert kW to W
+                    _LOGGER.debug(f"Wallbox sensor '{wb_power_sensor}' is in kW ({wb_power} kW). Converting to W.")
+                    wb_power *= 1000
+                    
+            except (ValueError, TypeError):
+                _LOGGER.warning(f"Could not parse state of '{wb_power_sensor}' as float: '{wb_power_state.state}'")
+        
         self._wallbox_power_history.append(wb_power)
 
         # Reset wait timer if it exceeds 10 hour (safety)
@@ -279,14 +295,20 @@ class MarstekCoordinator:
 
         # Rule 3: Check if paused charging can be RESUMED
         if self._wallbox_charge_paused:
-            # Check if history is full (5 minutes passed)
+            # Check if history is full (as defined by CONF_WALLBOX_RESUME_CHECK_SECONDS)
             if len(self._wallbox_power_history) == self._wallbox_power_history.maxlen:
-                oldest_power = self._wallbox_power_history[0]
-                power_increase = wb_power - oldest_power
                 
-                # If power has not increased significantly, car is likely full or at max rate
-                if power_increase < stability_treshold:
-                    _LOGGER.info(f"Wallbox power has stabilized. Resuming battery charging logic.")
+                # Calculate the average power over the history window
+                avg_power = sum(self._wallbox_power_history) / len(self._wallbox_power_history)
+                
+                # Check absolute difference between current power and average power
+                power_diff_from_avg = abs(wb_power - avg_power)
+                
+                _LOGGER.debug(f"Wallbox resume check: Current={wb_power}W, Avg={avg_power:.0f}W, Diff={power_diff_from_avg:.0f}W, Treshold={stability_treshold}W")
+
+                # If power is stable (current value is close to the average), car is likely full or at max rate
+                if power_diff_from_avg < stability_treshold:
+                    _LOGGER.info(f"Wallbox power has stabilized (Diff {power_diff_from_avg:.0f}W < {stability_treshold}W). Resuming battery charging logic.")
                     self._wallbox_charge_paused = False
                     self._wallbox_power_history.clear()
                     # We return False to let the normal logic resume charging.

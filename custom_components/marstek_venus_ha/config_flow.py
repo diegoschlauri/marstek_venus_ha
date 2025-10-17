@@ -27,6 +27,7 @@ from .const import (
     CONF_WALLBOX_POWER_STABILITY_THRESHOLD,
     CONF_WALLBOX_RESUME_CHECK_SECONDS,
     CONF_WALLBOX_START_DELAY_SECONDS,
+    CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS,
     DEFAULT_SMOOTHING_SECONDS,
     DEFAULT_MIN_SURPLUS,
     DEFAULT_MIN_CONSUMPTION,
@@ -40,7 +41,8 @@ from .const import (
     DEFAULT_WALLBOX_MAX_SURPLUS,
     DEFAULT_WALLBOX_POWER_STABILITY_THRESHOLD,
     DEFAULT_WALLBOX_RESUME_CHECK_SECONDS,
-    DEFAULT_WALLBOX_START_DELAY_SECONDS
+    DEFAULT_WALLBOX_START_DELAY_SECONDS,
+    DEFAULT_COORDINATOR_UPDATE_INTERVAL_SECONDS
 )
 
 class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -73,16 +75,18 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_POWER_STAGE_CHARGE_1, default=DEFAULT_POWER_STAGE_CHARGE_1): int,
                 vol.Required(CONF_POWER_STAGE_CHARGE_2, default=DEFAULT_POWER_STAGE_CHARGE_2): int,
                 vol.Required(CONF_PRIORITY_INTERVAL, default=DEFAULT_PRIORITY_INTERVAL): int,
-                vol.Optional(CONF_WALLBOX_POWER_SENSOR, default=None): selector.EntitySelector(
+                vol.Optional(CONF_WALLBOX_POWER_SENSOR, default=""): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
                 vol.Optional(CONF_WALLBOX_MAX_SURPLUS, default=DEFAULT_WALLBOX_MAX_SURPLUS): int,
-                vol.Optional(CONF_WALLBOX_CABLE_SENSOR, default=None): selector.EntitySelector(
+                vol.Optional(CONF_WALLBOX_CABLE_SENSOR, default=""): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="binary_sensor")
                 ),
                 vol.Optional(CONF_WALLBOX_POWER_STABILITY_THRESHOLD, default=DEFAULT_WALLBOX_POWER_STABILITY_THRESHOLD): int,
                 vol.Optional(CONF_WALLBOX_RESUME_CHECK_SECONDS, default=DEFAULT_WALLBOX_RESUME_CHECK_SECONDS): int,
-                vol.Optional(CONF_WALLBOX_START_DELAY_SECONDS, default=DEFAULT_WALLBOX_START_DELAY_SECONDS): int
+                vol.Optional(CONF_WALLBOX_START_DELAY_SECONDS, default=DEFAULT_WALLBOX_START_DELAY_SECONDS): int,
+                vol.Required(CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS, default=DEFAULT_COORDINATOR_UPDATE_INTERVAL_SECONDS): int
+
             }
         )
 
@@ -195,7 +199,7 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_WALLBOX_POWER_SENSOR,
                     default=self.config_entry.options.get(
-                        CONF_WALLBOX_POWER_SENSOR, self.config_entry.data.get(CONF_WALLBOX_POWER_SENSOR, None)
+                        CONF_WALLBOX_POWER_SENSOR, self.config_entry.data.get(CONF_WALLBOX_POWER_SENSOR, "")
                     ),
                 ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
                 vol.Optional(
@@ -207,7 +211,7 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_WALLBOX_CABLE_SENSOR,
                     default=self.config_entry.options.get(
-                        CONF_WALLBOX_CABLE_SENSOR, self.config_entry.data.get(CONF_WALLBOX_CABLE_SENSOR, None)
+                        CONF_WALLBOX_CABLE_SENSOR, self.config_entry.data.get(CONF_WALLBOX_CABLE_SENSOR, "")
                     ),
                 ): selector.EntitySelector(selector.EntitySelectorConfig(domain="binary_sensor")),
                 vol.Optional(
@@ -226,6 +230,12 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_WALLBOX_START_DELAY_SECONDS,
                     default=self.config_entry.options.get(
                         CONF_WALLBOX_START_DELAY_SECONDS, self.config_entry.data.get(CONF_WALLBOX_START_DELAY_SECONDS, DEFAULT_WALLBOX_START_DELAY_SECONDS)
+                    ),
+                ): int,
+                vol.Required(
+                    CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS,
+                    default=self.config_entry.options.get(
+                        CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS, self.config_entry.data.get(CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS, DEFAULT_COORDINATOR_UPDATE_INTERVAL_SECONDS)
                     ),
                 ): int,
             }
