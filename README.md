@@ -22,21 +22,33 @@ Die Integration steuert die Batterien nicht alle gleichzeitig, sondern aktiviert
 ## !! Wichtige Voraussetzung !!
 
 Diese Integration steuert die Batterien nicht direkt über eine herstellerspezifische API. Stattdessen **müssen Sie für jede Batterie bereits Entitäten in Home Assistant haben**, um:
-1.  Den **Ladezustand (SoC)** zu lesen (z.B. `sensor.marstek_1_battery_soc`).
-2.  Die **aktuelle Lade-/Entladeleistung** zu lesen (z.B. `sensor.marstek_1_ac_power`). Ein positiver Wert bedeutet Laden, ein negativer Entladen.
-4.  Die **Lade und Entladeleistung** zu steuern (z.B. `number.marstek_1_discharging_charging_power`).
+1.  Den **Ladezustand (SoC)** zu lesen (z.B. `sensor.marstek_l1_battery_soc`).
+2.  Die **aktuelle Lade-/Entladeleistung** zu lesen (z.B. `sensor.marstek_l1_ac_power`). Ein positiver Wert bedeutet Entladen, ein negativer Laden.
 
-Im Konfigurationsprozess geben Sie den **Basis-Entitätsnamen** für jede Batterie an (z.B. `marstek_1`). Die Integration leitet daraus die Namen der benötigten Entitäten ab, indem sie die Suffixe `_battery_soc`, `_ac_power` und `_discharging_charging_power` erwartet.
+**Bei folgenden Werten muss bei der Integration womöglich der Name manuell angepasst werden**
+3.  Die **Ladeleistung** zu steuern (z.B. `number.marstek_l1_modbus_set_forcible_charge_power`).
+4.  Die **Entladeleistung** zu steuern (z.B. `number.marstek_l1_modbus_set_forcible_discharge_power`).
+5.  Den Select um **Force Mode** um die Stromrichtung zu steuern (z.B. `select.marstek_l1_modbus_force_mode`).
+6.  Den Switch um **RS485 Mode** zu aktivieren (z.B. `switch.marstek_l1_modbus_rs485_control_mode`)
 
-Als Basis für die Integration eines Marstek Energiespeichers wurden die Modbus-Definitionen von https://github.com/reschcloud/marstek_venus_e_modbus_home_assistant genommen.
-Je nach Anwendungsfall kann es sinnvoll sein den scan_interval für marstek_ac_power von 10 auf 1 herab zu setzen.
-Werden mehrere Batterien verwendet kann dies entweder mit mehreren Modbus Adapter und seperaten IP-Adressen oder mit einem Adapter und mehreren slaves gemacht werden.
+
+Im Konfigurationsprozess geben Sie den **Basis-Entität Namen** für jede Batterie an (z.B. `marstek_l1`). Die Integration leitet daraus die Namen der benötigten Entitäten ab, indem sie die Suffixe `_battery_soc`, `_ac_power`, `_modbus_set_forcible_charge_power`, `_modbus_set_forcible_discharge_power`,`_modbus_force_mode` und `_modbus_rs485_control_mode` erwartet.
+
+Schalten Sie in den Batterien die Local API Port 3000 frei via https://rweijnen.github.io/marstek-venus-monitor/latest/
+
+Als Basis für die Integration eines Marstek Energiespeichers wurden die Modbus-Integration von https://github.com/ViperRNMC/marstek_venus_modbus genommen.
+Je nach Anwendungsfall kann es sinnvoll sein die Scan Intervalle zu reduzieren. (In den Einstellungen der Marstek Venus Modbus Integration)
+Werden mehrere Batterien verwendet kann dies entweder mit mehreren Modbus Adapter und seperaten IP-Adressen verwendet werden.
 
 **Beispiel:**
-Wenn Sie als Entität für die erste Batterie `marstek_1` angeben, muss die Integration folgende Entitäten finden können:
-* `sensor.marstek_1_battery_soc`
-* `sensor.marstek_1_ac_power` **(Wichtig für die Wallbox-Logik)**
-* `number.marstek_1_discharging_charging_power`
+Wenn Sie als Entität für die erste Batterie `marstek_l1` angeben, muss die Integration folgende Entitäten finden können:
+* `sensor.marstek_l1_battery_soc`
+* `sensor.marstek_l1_ac_power` **(Wichtig für die Wallbox-Logik)**
+* `number.marstek_l1_modbus_set_forcible_charge_power`
+* `number.marstek_l1_modbus_set_forcible_discharge_power`
+* `select.marstek_l1_modbus_force_mode`
+* `switch.marstek_l1_modbus_rs485_control_mode`
+
 
 Stellen Sie sicher, dass diese Entitäten vorhanden und funktionsfähig sind, bevor Sie die Integration einrichten.
 

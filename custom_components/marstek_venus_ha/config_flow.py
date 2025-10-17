@@ -73,11 +73,11 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_POWER_STAGE_CHARGE_1, default=DEFAULT_POWER_STAGE_CHARGE_1): int,
                 vol.Required(CONF_POWER_STAGE_CHARGE_2, default=DEFAULT_POWER_STAGE_CHARGE_2): int,
                 vol.Required(CONF_PRIORITY_INTERVAL, default=DEFAULT_PRIORITY_INTERVAL): int,
-                vol.Optional(CONF_WALLBOX_POWER_SENSOR): selector.EntitySelector(
+                vol.Optional(CONF_WALLBOX_POWER_SENSOR, default=None): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
                 vol.Optional(CONF_WALLBOX_MAX_SURPLUS, default=DEFAULT_WALLBOX_MAX_SURPLUS): int,
-                vol.Optional(CONF_WALLBOX_CABLE_SENSOR): selector.EntitySelector(
+                vol.Optional(CONF_WALLBOX_CABLE_SENSOR, default=None): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="binary_sensor")
                 ),
                 vol.Optional(CONF_WALLBOX_POWER_STABILITY_THRESHOLD, default=DEFAULT_WALLBOX_POWER_STABILITY_THRESHOLD): int,
@@ -195,7 +195,7 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_WALLBOX_POWER_SENSOR,
                     default=self.config_entry.options.get(
-                        CONF_WALLBOX_POWER_SENSOR, self.config_entry.data.get(CONF_WALLBOX_POWER_SENSOR)
+                        CONF_WALLBOX_POWER_SENSOR, self.config_entry.data.get(CONF_WALLBOX_POWER_SENSOR, None)
                     ),
                 ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
                 vol.Optional(
@@ -207,7 +207,7 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_WALLBOX_CABLE_SENSOR,
                     default=self.config_entry.options.get(
-                        CONF_WALLBOX_CABLE_SENSOR, self.config_entry.data.get(CONF_WALLBOX_CABLE_SENSOR)
+                        CONF_WALLBOX_CABLE_SENSOR, self.config_entry.data.get(CONF_WALLBOX_CABLE_SENSOR, None)
                     ),
                 ): selector.EntitySelector(selector.EntitySelectorConfig(domain="binary_sensor")),
                 vol.Optional(

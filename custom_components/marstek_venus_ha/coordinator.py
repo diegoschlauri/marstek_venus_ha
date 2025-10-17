@@ -210,9 +210,9 @@ class MarstekCoordinator:
         
         # Calculate real power based on batterie direction
         if self._last_power_direction == -1: #Batteries are actually discharging 
-            real_power = (smoothed_grid_power + total_battery_power) 
+            real_power = (smoothed_grid_power + abs(total_battery_power)) 
         elif self._last_power_direction == 1: #Batteries are actually charging
-            real_power = (smoothed_grid_power - total_battery_power)
+            real_power = (smoothed_grid_power - abs(total_battery_power))
         else:
             real_power = smoothed_grid_power
         
@@ -390,16 +390,25 @@ class MarstekCoordinator:
 
     async def _set_battery_power(self, base_entity_id: str, power: int, direction: int):
         """Set the charge or discharge power for a single battery."""
-        power_entity = f"number.{base_entity_id}_discharge_charge_power"
-        # discharge_entity = f"number.{base_entity_id}_discharge_charge_power"
+        charge_entity = f"number.{base_entity_id}_modbus_set_forcible_charge_power"
+        discharge_entity = f"number.{base_entity_id}_modbus_set_forcible_discharge_power"
+        force_mode= f"select.{base_entity_id}_modbus_force_mode"
+        modbus_control_mode = f"switch.{base_entity_id}_modbus_rs485_control_mode"
+        # Ensure Modbus control mode is set to 'forcible'
+        await self.hass.services.async_call("switch", "turn_on", {"entity_id": modbus_control_mode}, blocking=True)
         
         try:
-            if direction == 1:
-                await self.hass.services.async_call("number", "set_value", {"entity_id": power_entity, "value": power}, blocking=True)
-            elif direction == -1:
-                await self.hass.services.async_call("number", "set_value", {"entity_id": power_entity, "value": -power}, blocking=True)
-            else:
-                await self.hass.services.async_call("number", "set_value", {"entity_id": power_entity, "value": 0}, blocking=True)
+            if direction == 1: #Charging the Batteries
+                await self.hass.services.async_call("number", "set_value", {"entity_id": charge_entity, "value": power}, blocking=True)
+                await self.hass.services.async_call("select", "select_option", {"entity_id": force_mode, "option": "Charge"}, blocking=True)
+            elif direction == -1: #Discharging the Batteries
+                await self.hass.services.async_call("number", "set_value", {"entity_id": discharge_entity, "value": power}, blocking=True)
+                await self.hass.services.async_call("select", "select_option", {"entity_id": force_mode, "option": "Discharge"}, blocking=True)
+            else: #Set to 0
+                await self.hass.services.async_call("number", "set_value", {"entity_id": charge_entity, "value": 0}, blocking=True)
+                await self.hass.services.async_call("number", "set_value", {"entity_id": discharge_entity, "value": 0}, blocking=True)
+                await self.hass.services.async_call("select", "select_option", {"entity_id": force_mode, "option": "None"}, blocking=True)
+
             # Add a small delay to prevent overwhelming the device APIs
             await asyncio.sleep(0.1)
         except Exception as e:
