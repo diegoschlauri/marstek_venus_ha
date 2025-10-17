@@ -122,10 +122,11 @@ class MarstekCoordinator:
             self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
             self._wallbox_power_history = deque(maxlen=self._get_deque_size("wallbox"))
             await self._set_all_batteries_to_zero() # Reset Batteries to 0 on Start-Up
+            coordinator_update_interval = self.config.get(CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS)
             self._unsub_listener = async_track_time_interval(
                 self.hass,
                 self._async_update,
-                timedelta(seconds=CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS),
+                timedelta(seconds=coordinator_update_interval),
             )
             self._is_running = True
             _LOGGER.info("Marstek Venus HA Integration coordinator started.")
