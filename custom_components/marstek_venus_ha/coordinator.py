@@ -79,7 +79,7 @@ class MarstekCoordinator:
         else:
             return 1
             
-        return max(1, seconds // CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS)
+        return max(1, seconds)
 
     async def wait_for_entity_available(self, entity_id, timeout=60):
         """Wait until the entity is available or timeout."""
