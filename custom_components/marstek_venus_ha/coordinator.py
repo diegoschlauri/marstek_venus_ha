@@ -83,6 +83,10 @@ class MarstekCoordinator:
 
     async def wait_for_entity_available(self, entity_id, timeout=60):
         """Wait until the entity is available or timeout."""
+        # Füge eine Sicherheitsabfrage hinzu, falls die entity_id leer ist
+        if not entity_id:
+            _LOGGER.warning("wait_for_entity_available called with empty entity_id.")
+            return
         wait_event = asyncio.Event()
     
         def _listener(event):
