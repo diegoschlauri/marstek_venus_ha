@@ -195,8 +195,11 @@ class MarstekCoordinator:
         self._power_history.append(current_power)
         if not self._power_history:
             return 0.0
-
-        avg_power = sum(self._power_history) / len(self._power_history)
+        smoothing = self.config.get(CONF_SMOOTHING_SECONDS)
+        if smoothing > 0:
+            avg_power = sum(self._power_history) / len(self._power_history)
+        else:
+            return current_power
         _LOGGER.debug(f"Current grid power: {current_power}W, Smoothed grid power: {avg_power:.2f}W")
         return avg_power
 
@@ -416,7 +419,7 @@ class MarstekCoordinator:
             power_per_battery = min(power_per_battery, max_charge_power)
         elif power_direction == -1: #Discharging
             power_per_battery = min(power_per_battery, max_discharge_power) 
-            
+
         active_battery_ids = [b['id'] for b in active_batteries]
 
         _LOGGER.debug(f"Distributing {power:.0f}W to {len(active_battery_ids)} batteries: {active_battery_ids} with {power_per_battery}W each.")

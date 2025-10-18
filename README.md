@@ -22,14 +22,13 @@ Die Integration steuert die Batterien nicht alle gleichzeitig, sondern aktiviert
 ## !! Wichtige Voraussetzung !!
 
 Diese Integration steuert die Batterien nicht direkt über eine herstellerspezifische API. Stattdessen **müssen Sie für jede Batterie bereits Entitäten in Home Assistant haben**, um:
+
 1.  Den **Ladezustand (SoC)** zu lesen (z.B. `sensor.marstek_l1_battery_soc`).
 2.  Die **aktuelle Lade-/Entladeleistung** zu lesen (z.B. `sensor.marstek_l1_ac_power`). Ein positiver Wert bedeutet Entladen, ein negativer Laden.
-
-**Bei folgenden Werten muss bei der Integration womöglich der Name manuell angepasst werden**
-3.  Die **Ladeleistung** zu steuern (z.B. `number.marstek_l1_modbus_set_forcible_charge_power`).
-4.  Die **Entladeleistung** zu steuern (z.B. `number.marstek_l1_modbus_set_forcible_discharge_power`).
-5.  Den Select um **Force Mode** um die Stromrichtung zu steuern (z.B. `select.marstek_l1_modbus_force_mode`).
-6.  Den Switch um **RS485 Mode** zu aktivieren (z.B. `switch.marstek_l1_modbus_rs485_control_mode`)
+3.  Die **Ladeleistung** zu steuern (z.B. `number.marstek_l1_modbus_set_forcible_charge_power`)(Id muss manuell angepasst werden wenn mehrere Batterien via der Modbus Integration verwendet werden).
+4.  Die **Entladeleistung** zu steuern (z.B. `number.marstek_l1_modbus_set_forcible_discharge_power`)(Id muss manuell angepasst werden wenn mehrere Batterien via der Modbus Integration verwendet werden).
+5.  Den Select um **Force Mode** um die Stromrichtung zu steuern (z.B. `select.marstek_l1_modbus_force_mode`)(Id muss manuell angepasst werden wenn mehrere Batterien via der Modbus Integration verwendet werden).
+6.  Den Switch um **RS485 Mode** zu aktivieren (z.B. `switch.marstek_l1_modbus_rs485_control_mode`)(Id muss manuell angepasst werden wenn mehrere Batterien via der Modbus Integration verwendet werden)
 
 
 Im Konfigurationsprozess geben Sie den **Basis-Entität Namen** für jede Batterie an (z.B. `marstek_l1`). Die Integration leitet daraus die Namen der benötigten Entitäten ab, indem sie die Suffixe `_battery_soc`, `_ac_power`, `_modbus_set_forcible_charge_power`, `_modbus_set_forcible_discharge_power`,`_modbus_force_mode` und `_modbus_rs485_control_mode` erwartet.
@@ -83,7 +82,7 @@ Nach der Installation können Sie die Integration über die Home Assistant UI hi
 | Parameter | Beschreibung | Beispiel |
 | --- | --- | --- |
 | **ID des Netzanschluss-Leistungssensors** | Die Sensor-ID, die den aktuellen Netzbezug (+) oder die Einspeisung (-) in Watt misst. | `sensor.power_meter_power` |
-| **Leistungsglättung in Sekunden** | Zeitfenster in Sekunden, über das der Durchschnitt der Netzleistung gebildet wird. | `5` |
+| **Leistungsglättung in Sekunden** | Zeitfenster in Sekunden, über das der Durchschnitt der Netzleistung gebildet wird. Wird der Wert 0 gesetzt findet keine Glättung statt und der aktuellste Wert wird verwendet | `2` |
 | **Minimaler Überschuss** | Minimaler Leistungsüberschuss in Watt damit die Ladung staret. | `200` |
 | **Minimaler Bezug** | Minimaler Verbrauch in Watt damit die Entladung staret. | `200` |
 | **Entität der ersten Batterie** | Der Basisname der Entitäten für die erste Batterie. | `marstek_l1` |
