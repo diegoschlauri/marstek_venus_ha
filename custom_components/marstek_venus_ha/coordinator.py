@@ -19,6 +19,8 @@ from .const import (
     CONF_BATTERY_3_ENTITY,
     CONF_MIN_SOC,
     CONF_MAX_SOC,
+    CONF_MAX_DISCHARGE_POWER,
+    CONF_MAX_CHARGE_POWER,
     CONF_POWER_STAGE_DISCHARGE_1,
     CONF_POWER_STAGE_DISCHARGE_2,
     CONF_POWER_STAGE_CHARGE_1,
@@ -382,6 +384,8 @@ class MarstekCoordinator:
         """Control battery charge/discharge based on power stages."""
         abs_power = abs(power)
         stage_offset = self.config.get(CONF_POWER_STAGE_OFFSET, 50)
+        max_discharge_power = self.config.get(CONF_MAX_DISCHARGE_POWER,2500)
+        max_charge_power = self.config.get(CONF_MAX_CHARGE_POWER,2500)
         if power_direction == -1: #Currently Discharging
             stage1 = self.config.get(CONF_POWER_STAGE_DISCHARGE_1)
             stage2 = self.config.get(CONF_POWER_STAGE_DISCHARGE_2)
@@ -407,6 +411,12 @@ class MarstekCoordinator:
             return
 
         power_per_battery = round(abs_power / len(active_batteries))
+        # Ensure we do not exceed max charge/discharge power
+        if power_direction == 1: #Charging
+            power_per_battery = min(power_per_battery, max_charge_power)
+        elif power_direction == -1: #Discharging
+            power_per_battery = min(power_per_battery, max_discharge_power) 
+            
         active_battery_ids = [b['id'] for b in active_batteries]
 
         _LOGGER.debug(f"Distributing {power:.0f}W to {len(active_battery_ids)} batteries: {active_battery_ids} with {power_per_battery}W each.")

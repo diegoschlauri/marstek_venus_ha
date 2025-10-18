@@ -16,6 +16,8 @@ from .const import (
     CONF_BATTERY_3_ENTITY,
     CONF_MIN_SOC,
     CONF_MAX_SOC,
+    CONF_MAX_DISCHARGE_POWER,
+    CONF_MAX_CHARGE_POWER,
     CONF_POWER_STAGE_DISCHARGE_1,
     CONF_POWER_STAGE_DISCHARGE_2,
     CONF_POWER_STAGE_CHARGE_1,
@@ -34,6 +36,8 @@ from .const import (
     DEFAULT_MIN_CONSUMPTION,
     DEFAULT_MIN_SOC,
     DEFAULT_MAX_SOC,
+    DEFAULT_MAX_DISCHARGE_POWER,
+    DEFAULT_MAX_CHARGE_POWER,
     DEFAULT_POWER_STAGE_DISCHARGE_1,
     DEFAULT_POWER_STAGE_DISCHARGE_2,
     DEFAULT_POWER_STAGE_CHARGE_1,
@@ -72,6 +76,8 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_BATTERY_3_ENTITY, default=""): str,
                 vol.Required(CONF_MIN_SOC, default=DEFAULT_MIN_SOC): int,
                 vol.Required(CONF_MAX_SOC, default=DEFAULT_MAX_SOC): int,
+                vol.Required(CONF_MAX_DISCHARGE_POWER, default=DEFAULT_MAX_DISCHARGE_POWER): int,
+                vol.Required(CONF_MAX_CHARGE_POWER, default=DEFAULT_MAX_CHARGE_POWER): int,
                 vol.Required(CONF_POWER_STAGE_DISCHARGE_1, default=DEFAULT_POWER_STAGE_DISCHARGE_1): int,
                 vol.Required(CONF_POWER_STAGE_DISCHARGE_2, default=DEFAULT_POWER_STAGE_DISCHARGE_2): int,
                 vol.Required(CONF_POWER_STAGE_CHARGE_1, default=DEFAULT_POWER_STAGE_CHARGE_1): int,
@@ -163,6 +169,18 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_MAX_SOC,
                     default=self.config_entry.options.get(
                         CONF_MAX_SOC, self.config_entry.data.get(CONF_MAX_SOC, DEFAULT_MAX_SOC)
+                    ),
+                ): int,
+                vol.Required(
+                    CONF_MAX_DISCHARGE_POWER,
+                    default=self.config_entry.options.get(
+                        CONF_MAX_DISCHARGE_POWER, self.config_entry.data.get(CONF_MAX_DISCHARGE_POWER, DEFAULT_MAX_DISCHARGE_POWER)
+                    ),
+                ): int,
+                vol.Required(
+                    CONF_MAX_CHARGE_POWER,
+                    default=self.config_entry.options.get(
+                        CONF_MAX_CHARGE_POWER, self.config_entry.data.get(CONF_MAX_CHARGE_POWER, DEFAULT_MAX_CHARGE_POWER)
                     ),
                 ): int,
                 vol.Required(
