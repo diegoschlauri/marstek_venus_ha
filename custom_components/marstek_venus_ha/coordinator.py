@@ -23,6 +23,7 @@ from .const import (
     CONF_POWER_STAGE_DISCHARGE_2,
     CONF_POWER_STAGE_CHARGE_1,
     CONF_POWER_STAGE_CHARGE_2,
+    CONF_POWER_STAGE_OFFSET,
     CONF_PRIORITY_INTERVAL,
     CONF_WALLBOX_POWER_SENSOR,
     CONF_WALLBOX_MAX_SURPLUS,
@@ -210,7 +211,7 @@ class MarstekCoordinator:
         total_battery_power = sum(
                 p for p in [
                     self._get_float_state(f"sensor.{b}_ac_power") for b in self._battery_entities
-                ] if p is not None and p > 0
+                ] if p is not None and p != 0
             )
         
         # Calculate real power based on batterie direction
@@ -380,6 +381,7 @@ class MarstekCoordinator:
     async def _distribute_power(self, power: float, power_direction: int):
         """Control battery charge/discharge based on power stages."""
         abs_power = abs(power)
+        stage_offset = self.config.get(CONF_POWER_STAGE_OFFSET, 50)
         if power_direction == -1: #Currently Discharging
             stage1 = self.config.get(CONF_POWER_STAGE_DISCHARGE_1)
             stage2 = self.config.get(CONF_POWER_STAGE_DISCHARGE_2)
@@ -393,9 +395,9 @@ class MarstekCoordinator:
             return
             
         active_batteries = []
-        if abs_power <= stage1 or num_available == 1:
+        if abs_power <= (stage1+stage_offset) or num_available == 1:
             active_batteries = self._battery_priority[:1]
-        elif (stage1 < abs_power <= stage2) or num_available == 2:
+        elif ((stage1-stage_offset) < abs_power <= (stage2+stage_offset)) or num_available == 2:
             active_batteries = self._battery_priority[:2]
         else:
             active_batteries = self._battery_priority[:3]

@@ -20,6 +20,7 @@ from .const import (
     CONF_POWER_STAGE_DISCHARGE_2,
     CONF_POWER_STAGE_CHARGE_1,
     CONF_POWER_STAGE_CHARGE_2,
+    CONF_POWER_STAGE_OFFSET,
     CONF_PRIORITY_INTERVAL,
     CONF_WALLBOX_POWER_SENSOR,
     CONF_WALLBOX_MAX_SURPLUS,
@@ -37,6 +38,7 @@ from .const import (
     DEFAULT_POWER_STAGE_DISCHARGE_2,
     DEFAULT_POWER_STAGE_CHARGE_1,
     DEFAULT_POWER_STAGE_CHARGE_2,
+    DEFAULT_POWER_STAGE_OFFSET,
     DEFAULT_PRIORITY_INTERVAL,
     DEFAULT_WALLBOX_MAX_SURPLUS,
     DEFAULT_WALLBOX_POWER_STABILITY_THRESHOLD,
@@ -74,14 +76,11 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_POWER_STAGE_DISCHARGE_2, default=DEFAULT_POWER_STAGE_DISCHARGE_2): int,
                 vol.Required(CONF_POWER_STAGE_CHARGE_1, default=DEFAULT_POWER_STAGE_CHARGE_1): int,
                 vol.Required(CONF_POWER_STAGE_CHARGE_2, default=DEFAULT_POWER_STAGE_CHARGE_2): int,
+                vol.Required(CONF_POWER_STAGE_OFFSET, default=DEFAULT_POWER_STAGE_OFFSET): int,
                 vol.Required(CONF_PRIORITY_INTERVAL, default=DEFAULT_PRIORITY_INTERVAL): int,
-                vol.Optional(CONF_WALLBOX_POWER_SENSOR, default=""): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor")
-                ),
+                vol.Optional(CONF_WALLBOX_POWER_SENSOR, default=""): str,
                 vol.Optional(CONF_WALLBOX_MAX_SURPLUS, default=DEFAULT_WALLBOX_MAX_SURPLUS): int,
-                vol.Optional(CONF_WALLBOX_CABLE_SENSOR, default=""): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="binary_sensor")
-                ),
+                vol.Optional(CONF_WALLBOX_CABLE_SENSOR, default=""): str,
                 vol.Optional(CONF_WALLBOX_POWER_STABILITY_THRESHOLD, default=DEFAULT_WALLBOX_POWER_STABILITY_THRESHOLD): int,
                 vol.Optional(CONF_WALLBOX_RESUME_CHECK_SECONDS, default=DEFAULT_WALLBOX_RESUME_CHECK_SECONDS): int,
                 vol.Optional(CONF_WALLBOX_START_DELAY_SECONDS, default=DEFAULT_WALLBOX_START_DELAY_SECONDS): int,
@@ -191,6 +190,12 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 ): int,
                 vol.Required(
+                    CONF_POWER_STAGE_OFFSET,
+                    default=self.config_entry.options.get(
+                        CONF_POWER_STAGE_OFFSET, self.config_entry.data.get(CONF_POWER_STAGE_OFFSET, DEFAULT_POWER_STAGE_OFFSET)
+                    ),
+                ): int,
+                vol.Required(
                     CONF_PRIORITY_INTERVAL,
                     default=self.config_entry.options.get(
                         CONF_PRIORITY_INTERVAL, self.config_entry.data.get(CONF_PRIORITY_INTERVAL, DEFAULT_PRIORITY_INTERVAL)
@@ -201,7 +206,7 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                     default=self.config_entry.options.get(
                         CONF_WALLBOX_POWER_SENSOR, self.config_entry.data.get(CONF_WALLBOX_POWER_SENSOR, "")
                     ),
-                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                ): str,
                 vol.Optional(
                     CONF_WALLBOX_MAX_SURPLUS,
                     default=self.config_entry.options.get(
@@ -213,7 +218,7 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                     default=self.config_entry.options.get(
                         CONF_WALLBOX_CABLE_SENSOR, self.config_entry.data.get(CONF_WALLBOX_CABLE_SENSOR, "")
                     ),
-                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="binary_sensor")),
+                ): str,
                 vol.Optional(
                     CONF_WALLBOX_POWER_STABILITY_THRESHOLD,
                     default=self.config_entry.options.get(
