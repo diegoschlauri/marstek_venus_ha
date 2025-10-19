@@ -400,14 +400,62 @@ class MarstekCoordinator:
         if num_available == 0 or self._last_power_direction == 0:
             await self._set_all_batteries_to_zero()
             return
-            
-        active_batteries = []
-        if abs_power <= (stage1+stage_offset) or num_available == 1:
-            active_batteries = self._battery_priority[:1]
-        elif ((stage1-stage_offset) < abs_power <= (stage2+stage_offset)) or num_available == 2:
-            active_batteries = self._battery_priority[:2]
+        
+        # 1. Ermittle die Anzahl der Batterien, die aktuell Leistung liefern/aufnehmen
+        num_currently_active = 0
+        for b_id in self._battery_entities:
+            power_state = self._get_float_state(f"sensor.{b_id}_ac_power")
+            # Zähle Batterien mit mehr als 10W (Toleranz für Rauschen)
+            if power_state is not None and abs(power_state) > 10:
+                num_currently_active += 1
+
+        _LOGGER.debug(f"Hysteresis check: num_available={num_available}, num_currently_active={num_currently_active}, abs_power={abs_power:.0f}W")
+        
+        # 2. Implementiere Hysterese-Logik basierend auf dem aktuellen Zustand
+        target_num_batteries = 0
+
+        if num_currently_active <= 1:
+            # Aktuell 0 oder 1 Batterie aktiv. Logik zum HOCHschalten:
+            # Schwelle = STUFE + OFFSET
+            if abs_power > (stage2 + stage_offset):
+                target_num_batteries = 3
+            elif abs_power > (stage1 + stage_offset):
+                target_num_batteries = 2
+            else:
+                # Leistung ist unter (stage1 + offset)
+                target_num_batteries = 1
+
+        elif num_currently_active == 2:
+            # Aktuell 2 Batterien aktiv. Logik zum HOCH- oder RUNTERschalten:
+            if abs_power > (stage2 + stage_offset):  # HOCHschalten
+                target_num_batteries = 3
+            elif abs_power < (stage1 - stage_offset):  # RUNTERschalten
+                target_num_batteries = 1
+            else:
+                # Bleibe im Hysterese-Bereich: (stage1 - offset) <= power <= (stage2 + offset)
+                target_num_batteries = 2
+
+        else:  # num_currently_active >= 3
+            # Aktuell 3 Batterien aktiv. Logik zum RUNTERschalten:
+            # Schwelle = STUFE - OFFSET
+            if abs_power < (stage1 - stage_offset):
+                target_num_batteries = 1
+            elif abs_power < (stage2 - stage_offset):
+                target_num_batteries = 2
+            else:
+                # Bleibe im Hysterese-Bereich: power >= (stage2 - offset)
+                target_num_batteries = 3
+
+        # Berücksichtige die maximal verfügbaren Batterien (aus der Prioritätenliste)
+        if num_available == 1:
+            target_num_batteries = 1
+        elif num_available == 2:
+            target_num_batteries = min(target_num_batteries, 2)
         else:
-            active_batteries = self._battery_priority[:3]
+            # Dies deckt num_available == 3 oder mehr ab
+            target_num_batteries = min(target_num_batteries, 3)
+
+        active_batteries = self._battery_priority[:target_num_batteries]
 
         if not active_batteries:
             await self._set_all_batteries_to_zero()
