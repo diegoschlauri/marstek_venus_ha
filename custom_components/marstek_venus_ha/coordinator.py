@@ -243,9 +243,17 @@ class MarstekCoordinator:
             return False
 
         cable_state = self._get_entity_state(wb_cable_sensor)
+        # Handle cable unplugged state (state is not 'on')
         if not cable_state or cable_state.state != STATE_ON:
+            # If cable is unplugged or sensor unavailable, reset all wallbox logic.
+            # Check if we were in a waiting state to log the reset.
+            if self._wallbox_charge_paused or (hasattr(self, "_wallbox_wait_start") and self._wallbox_wait_start is not None):
+                _LOGGER.info("Wallbox cable unplugged or unavailable. Resetting wallbox wait states.")
+
             self._wallbox_charge_paused = False
             self._wallbox_power_history.clear()
+            # Explicitly reset the "wait for wallbox to start" timer (Rule 2)
+            self._wallbox_wait_start = None
             return False
         # Get the wallbox power state to check its unit
         wb_power = 0.0
