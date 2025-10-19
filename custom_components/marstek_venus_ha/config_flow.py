@@ -30,6 +30,7 @@ from .const import (
     CONF_WALLBOX_POWER_STABILITY_THRESHOLD,
     CONF_WALLBOX_RESUME_CHECK_SECONDS,
     CONF_WALLBOX_START_DELAY_SECONDS,
+    CONF_WALLBOX_RETRY_MINUTES,
     CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS,
     DEFAULT_SMOOTHING_SECONDS,
     DEFAULT_MIN_SURPLUS,
@@ -48,6 +49,7 @@ from .const import (
     DEFAULT_WALLBOX_POWER_STABILITY_THRESHOLD,
     DEFAULT_WALLBOX_RESUME_CHECK_SECONDS,
     DEFAULT_WALLBOX_START_DELAY_SECONDS,
+    DEFAULT_WALLBOX_RETRY_MINUTES,
     DEFAULT_COORDINATOR_UPDATE_INTERVAL_SECONDS
 )
 
@@ -90,6 +92,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_WALLBOX_POWER_STABILITY_THRESHOLD, default=DEFAULT_WALLBOX_POWER_STABILITY_THRESHOLD): int,
                 vol.Optional(CONF_WALLBOX_RESUME_CHECK_SECONDS, default=DEFAULT_WALLBOX_RESUME_CHECK_SECONDS): int,
                 vol.Optional(CONF_WALLBOX_START_DELAY_SECONDS, default=DEFAULT_WALLBOX_START_DELAY_SECONDS): int,
+                vol.Optional(CONF_WALLBOX_RETRY_MINUTES, default=DEFAULT_WALLBOX_RETRY_MINUTES): int,
                 vol.Required(CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS, default=DEFAULT_COORDINATOR_UPDATE_INTERVAL_SECONDS): int
 
             }
@@ -253,6 +256,12 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_WALLBOX_START_DELAY_SECONDS,
                     default=self.config_entry.options.get(
                         CONF_WALLBOX_START_DELAY_SECONDS, self.config_entry.data.get(CONF_WALLBOX_START_DELAY_SECONDS, DEFAULT_WALLBOX_START_DELAY_SECONDS)
+                    ),
+                ): int,
+                vol.Optional(
+                    CONF_WALLBOX_RETRY_MINUTES,
+                    default=self.config_entry.options.get(
+                        CONF_WALLBOX_RETRY_MINUTES, self.config_entry.data.get(CONF_WALLBOX_RETRY_MINUTES, DEFAULT_WALLBOX_RETRY_MINUTES)
                     ),
                 ): int,
                 vol.Required(

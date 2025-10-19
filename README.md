@@ -82,7 +82,7 @@ Nach der Installation können Sie die Integration über die Home Assistant UI hi
 | Parameter | Beschreibung | Beispiel |
 | --- | --- | --- |
 | **ID des Netzanschluss-Leistungssensors** | Die Sensor-ID, die den aktuellen Netzbezug (+) oder die Einspeisung (-) in Watt misst. | `sensor.power_meter_power` |
-| **Leistungsglättung in Sekunden** | Zeitfenster in Sekunden, über das der Durchschnitt der Netzleistung gebildet wird. Wird der Wert 0 gesetzt findet keine Glättung statt und der aktuellste Wert wird verwendet | `2` |
+| **Leistungsglättung in Sekunden** | Zeitfenster in Sekunden, über das der Durchschnitt der Netzleistung gebildet wird. Wird der Wert 0 gesetzt findet keine Glättung statt und der aktuellste Wert wird verwendet | `0` |
 | **Minimaler Überschuss** | Minimaler Leistungsüberschuss in Watt damit die Ladung staret. | `200` |
 | **Minimaler Bezug** | Minimaler Verbrauch in Watt damit die Entladung staret. | `200` |
 | **Entität der ersten Batterie** | Der Basisname der Entitäten für die erste Batterie. | `marstek_l1` |
@@ -99,11 +99,12 @@ Nach der Installation können Sie die Integration über die Home Assistant UI hi
 | **Leistungsstufen Offset (W)** | Offset ab welchem die Leistungstufen umgestellt werden, damit weniger gewechselt wird. | `100` |
 | **Zeitintervall der Prioritätsermittlung (Minuten)** | Intervall, in dem die Priorität der Batterien neu bewertet wird. | `15` |
 | **ID des Leistungssensors der Wallbox (Optional)**| Der Sensor, der die Ladeleistung der Wallbox misst. | `sensor.wallbox_power` |
-| **Wallbox maximaler Überschuss (W) (Optional)**| Beträgt der PV-Überschuss mehr als diesen Wert, wird das Laden der Batterien pausiert. | `1500` |
+| **Wallbox maximaler Überschuss (W) (Optional)**| Beträgt der PV-Überschuss mehr als diesen Wert, wird das Laden der Batterien pausiert. | `1800` |
 | **Wallbox-Sensor für eingestecktes Kabel (Optional)**| Ein Binärsensor (`on`/`off`), der anzeigt, ob ein Ladekabel angeschlossen ist. | `binary_sensor.wallbox_cable_plugged_in` |
 | **Wallbox Leistungsschwankung(W) für Batterieladefreigabe (Optional)**| Spatzung für Leistungsschwankungen der Wallbox. Sobald die Leistung in den letzten X Sekunden nicht über diesen Wert zugenommen hat, wird das Laden der Batterien wieder ermöglicht. | `200` |
 | **Wallbox Aktualisierungs-Zeit für Batterieladefreigabe in Sekunden (Optional)**| Anzahl Sekunden bis die Batterien wieder fürs Laden freigebgen werden wenn der Leistungsschwankungswert nicht übertroffen wird. | `300` |
-| **Wallbox Delay in Sekunden (Optional)**| Anzahl Sekunden, welche gewartet wird, bis die Batterien wieder freigegeben werden. Dies kommt zum Zug wenn ein Auto eingesteckt ist, aber nicht zu laden beginnt. Dieser Wert ist auch relevant für die Phasenumschaltung der Wallbox. | `120` |
+| **Wallbox Startzeit in Sekunden (Optional)**| Anzahl Sekunden, welche gewartet wird, bis die Batterien wieder freigegeben werden. Dies kommt zum Zug wenn ein Auto eingesteckt ist, aber nicht zu laden beginnt. Dieser Wert ist auch relevant für die Phasenumschaltung der Wallbox. | `120` |
+| **Wallbox Retry in Minuten (Optional)**| Wurden eine Wallbox Session beendet und bleibt das Kabel eingesteckt, so wird nach diesen Anzahl Minuten und genügend Überschuss (> als Wallbox Überschuss Parameter) die Batterien für die Wallbox-Startzeit pausiert um ein Laden zu ermöglichen.| `60` |
 | **Coordinator Update Intervall**| Anzahl Sekunden, welche gewartet wird, bis ein erneute Wertelogik ausgeführt wird| `2` |
 
 ---

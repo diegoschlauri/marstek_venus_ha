@@ -33,6 +33,7 @@ from .const import (
     CONF_WALLBOX_POWER_STABILITY_THRESHOLD,
     CONF_WALLBOX_RESUME_CHECK_SECONDS,
     CONF_WALLBOX_START_DELAY_SECONDS,
+    CONF_WALLBOX_RETRY_MINUTES,
     CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS
 )
 
@@ -63,6 +64,7 @@ class MarstekCoordinator:
         # Wallbox state
         self._wallbox_charge_paused = False
         self._wallbox_power_history = deque(maxlen=self._get_deque_size("wallbox"))
+        self._last_wallbox_pause_attempt = datetime.min # For 60-minute cooldown
 
         # Collect battery entities
         self._battery_entities = [
@@ -118,7 +120,20 @@ class MarstekCoordinator:
         # Wait for grid_power_sensor
         grid_power_sensor = self.config.get(CONF_GRID_POWER_SENSOR)
         await self.wait_for_entity_available(grid_power_sensor)
-    
+
+        # Wait for Batterien entities
+        battery_1_sensor = self.config.get(CONF_BATTERY_1_ENTITY)
+        if battery_1_sensor:
+            await self.wait_for_entity_available(battery_1_sensor)
+
+        battery_2_sensor = self.config.get(CONF_BATTERY_2_ENTITY)
+        if battery_2_sensor:
+            await self.wait_for_entity_available(battery_2_sensor) 
+
+        battery_3_sensor = self.config.get(CONF_BATTERY_3_ENTITY)
+        if battery_3_sensor:
+            await self.wait_for_entity_available(battery_3_sensor)
+
         # Wait for wallbox_cable_sensor if defined
         wallbox_cable_sensor = self.config.get(CONF_WALLBOX_CABLE_SENSOR)
         if wallbox_cable_sensor:
@@ -128,6 +143,7 @@ class MarstekCoordinator:
             # Re-initialize deques on start
             self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
             self._wallbox_power_history = deque(maxlen=self._get_deque_size("wallbox"))
+            self._last_wallbox_pause_attempt = datetime.min # Reset cooldown on start
             await self._set_all_batteries_to_zero() # Reset Batteries to 0 on Start-Up
             coordinator_update_interval = self.config.get(CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS)
             self._unsub_listener = async_track_time_interval(
@@ -237,108 +253,100 @@ class MarstekCoordinator:
         max_surplus = self.config.get(CONF_WALLBOX_MAX_SURPLUS)
         stability_treshold = self.config.get(CONF_WALLBOX_POWER_STABILITY_THRESHOLD)
         start_delay = self.config.get(CONF_WALLBOX_START_DELAY_SECONDS)
+        retry_minutes = self.config.get(CONF_WALLBOX_RETRY_MINUTES, 60)
+        retry_seconds = retry_minutes * 60
 
+        # 0. Grundvoraussetzungen prüfen
         if not all([wb_power_sensor, wb_cable_sensor, max_surplus is not None]):
             self._wallbox_charge_paused = False
             return False
 
         cable_state = self._get_entity_state(wb_cable_sensor)
-        # Handle cable unplugged state (state is not 'on')
         if not cable_state or cable_state.state != STATE_ON:
-            # If cable is unplugged or sensor unavailable, reset all wallbox logic.
-            # Check if we were in a waiting state to log the reset.
             if self._wallbox_charge_paused or (hasattr(self, "_wallbox_wait_start") and self._wallbox_wait_start is not None):
                 _LOGGER.info("Wallbox cable unplugged or unavailable. Resetting wallbox wait states.")
-
             self._wallbox_charge_paused = False
             self._wallbox_power_history.clear()
-            # Explicitly reset the "wait for wallbox to start" timer (Rule 2)
             self._wallbox_wait_start = None
             return False
-        # Get the wallbox power state to check its unit
+            
         wb_power = 0.0
         wb_power_state = self._get_entity_state(wb_power_sensor)
         if wb_power_state:
             try:
-                # Try to convert state to float
                 wb_power = float(wb_power_state.state)
-                
-                # Check the unit of measurement
                 unit = wb_power_state.attributes.get("unit_of_measurement")
                 if unit and unit.lower() == 'kw':
-                    # Convert kW to W
-                    _LOGGER.debug(f"Wallbox sensor '{wb_power_sensor}' is in kW ({wb_power} kW). Converting to W.")
                     wb_power *= 1000
-                    
             except (ValueError, TypeError):
                 _LOGGER.warning(f"Could not parse state of '{wb_power_sensor}' as float: '{wb_power_state.state}'")
-        
+    
         self._wallbox_power_history.append(wb_power)
 
-        # Reset wait timer if it exceeds 10 hour (safety)
-        if hasattr(self, "_wallbox_wait_start") and self._wallbox_wait_start is not None:
-            elapsed = (datetime.now() - self._wallbox_wait_start).total_seconds()
-            if elapsed > 36000: 
-                self._wallbox_wait_start = None
-
-        # Rule 1: Always prevent battery discharge if wallbox is drawing power
-        if wb_power > 100:
+        # 1. Höchste Priorität: Entladeschutz, wenn Wallbox aktiv ist
+        if wb_power > 100 and self._last_power_direction == -1:
             _LOGGER.debug("Wallbox is active, ensuring batteries do not discharge.")
-            # Reset wallbox wait timer if wallbox is active
-            self._wallbox_wait_start = None
-            if self._last_power_direction == -1:
-                await self._set_all_batteries_to_zero()
-                return True # Take control to stop discharging
+            await self._set_all_batteries_to_zero()
+            return True
 
-        # Rule 2: Check if battery charging should be PAUSED for the car
-        if real_power < -max_surplus:
-            _LOGGER.info(f"Real surplus ({abs(real_power):.0f}W) > max ({max_surplus}W). Try pausing battery charging.")
-            # If wallbox does not start charging (wb_power <= 100) in 120 seconds, free batteries
-            if wb_power <= 100:
-            # Only start timer if not already started
-                if not hasattr(self, "_wallbox_wait_start") or self._wallbox_wait_start is None:
-                    # pause Batteries, start timer
-                    self._wallbox_wait_start = datetime.now()
-                    self._wallbox_charge_paused = True
-                    await self._set_all_batteries_to_zero()
-                    return True
-                else:
-                    # Check elapsed time
-                    elapsed = (datetime.now() - self._wallbox_wait_start).total_seconds()
-                    if elapsed > start_delay:
-                        # Time exceeded, resume battery logic
-                        _LOGGER.info(f"Wallbox did not start charging in {start_delay} seconds. Resuming battery logic.")
+        # 2. Zustandsprüfung: Ist eine Ladepause für die Wallbox aktiv?
+        if self._wallbox_charge_paused:
+            # JA, Pause ist aktiv. Prüfe Bedingungen, um die Pause zu BEENDEN.
+
+            # Regel 1.5: Überschuss weggefallen? -> Pause beenden
+            if real_power >= -max_surplus:
+                _LOGGER.info(f"Surplus ({abs(real_power):.0f}W) is below threshold ({max_surplus}W). Releasing batteries.")
+                self._wallbox_charge_paused = False
+                self._wallbox_power_history.clear()
+                self._wallbox_wait_start = None
+                return False
+
+            # Regel 2 (Timeout): Auto hat nicht angefangen zu laden? -> Pause beenden
+            if hasattr(self, "_wallbox_wait_start") and self._wallbox_wait_start is not None:
+                elapsed = (datetime.now() - self._wallbox_wait_start).total_seconds()
+                if elapsed > start_delay:
+                    _LOGGER.info(f"Wallbox did not start charging in {start_delay}s. Releasing batteries.")
+                    self._wallbox_charge_paused = False
+                    self._wallbox_power_history.clear()
+                    self._wallbox_wait_start = None
+                    return False
+
+            # Regel 3: Auto lädt, ist die Leistung stabil? -> Pause beenden
+            if wb_power > 100:
+                self._wallbox_wait_start = None # Timer wird irrelevant, sobald das Auto lädt
+                if len(self._wallbox_power_history) == self._wallbox_power_history.maxlen:
+                    avg_power = sum(self._wallbox_power_history) / len(self._wallbox_power_history)
+                    power_diff_from_avg = abs(wb_power - avg_power)
+                    _LOGGER.debug(f"Wallbox resume check: Current={wb_power:.0f}W, Avg={avg_power:.0f}W, Diff={power_diff_from_avg:.0f}W")
+                    if power_diff_from_avg < stability_treshold:
+                        _LOGGER.info(f"Wallbox power has stabilized. Releasing batteries.")
                         self._wallbox_charge_paused = False
                         self._wallbox_power_history.clear()
                         return False
 
-        # Rule 3: Check if paused charging can be RESUMED
-        if self._wallbox_charge_paused:
-            # Check if history is full (as defined by CONF_WALLBOX_RESUME_CHECK_SECONDS)
-            if len(self._wallbox_power_history) == self._wallbox_power_history.maxlen:
-                
-                # Calculate the average power over the history window
-                avg_power = sum(self._wallbox_power_history) / len(self._wallbox_power_history)
-                
-                # Check absolute difference between current power and average power
-                power_diff_from_avg = abs(wb_power - avg_power)
-                
-                _LOGGER.debug(f"Wallbox resume check: Current={wb_power}W, Avg={avg_power:.0f}W, Diff={power_diff_from_avg:.0f}W, Treshold={stability_treshold}W")
-
-                # If power is stable (current value is close to the average), car is likely full or at max rate
-                if power_diff_from_avg < stability_treshold:
-                    _LOGGER.info(f"Wallbox power has stabilized (Diff {power_diff_from_avg:.0f}W < {stability_treshold}W). Resuming battery charging logic.")
-                    self._wallbox_charge_paused = False
-                    self._wallbox_power_history.clear()
-                    # We return False to let the normal logic resume charging.
-                    # The discharge protection (Rule 1) will still apply if wb_power > 100 Watt.
-                    return False
-
-            # If still paused, keep batteries at zero
-            _LOGGER.debug("Battery charging remains paused for wallbox.")
+            # Keine Bedingung zum Beenden erfüllt -> Pause beibehalten
+            _LOGGER.debug("Wallbox pause remains active. Batteries set to zero.")
             await self._set_all_batteries_to_zero()
             return True
 
+        # 3. Zustandsprüfung: Keine Ladepause aktiv. Prüfen, ob eine gestartet werden soll.
+        else:
+            # Regel 2 (Start): Genug Überschuss UND Auto lädt nicht UND Cooldown abgelaufen? -> Pause starten
+            if real_power < -max_surplus and wb_power <= 100:
+                now = datetime.now()
+                time_since_last_attempt = (now - self._last_wallbox_pause_attempt).total_seconds()
+                
+                if time_since_last_attempt > retry_seconds:
+                    _LOGGER.info(f"High surplus ({abs(real_power):.0f}W) and inactive wallbox. Starting pause for car.")
+                    self._last_wallbox_pause_attempt = now
+                    self._wallbox_wait_start = now
+                    self._wallbox_charge_paused = True
+                    await self._set_all_batteries_to_zero()
+                    return True
+                else:
+                    _LOGGER.debug(f"High surplus, but wallbox pause is on cooldown ({time_since_last_attempt:.0f}s / {retry_seconds}s).")
+
+        # Kein Grund zur Intervention -> Normale Batterielogik ausführen lassen
         return False
 
     async def _update_battery_priority_if_needed(self, real_power: float):
