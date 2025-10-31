@@ -271,12 +271,12 @@ class MarstekCoordinator:
         if not cable_on:
             _LOGGER.debug("Wallbox cable unplugged or unavailable. Skipping wallbox logic.")
             if self._wallbox_charge_paused or self._wallbox_cable_was_on:
-                _LOGGER.debug("Wallbox cable unplugged. Resetting wallbox wait states and pause.")
-            self._wallbox_charge_paused = False
-            self._wallbox_power_history.clear()
-            self._wallbox_wait_start = None
-            self._wallbox_cable_was_on = False
-            self._last_wallbox_pause_attempt = datetime.min # Reset cooldown on unplug
+                _LOGGER.info("Wallbox cable unplugged. Resetting wallbox wait states and pause.")
+                self._wallbox_charge_paused = False
+                self._wallbox_power_history.clear()
+                self._wallbox_wait_start = None
+                self._wallbox_cable_was_on = False
+                self._last_wallbox_pause_attempt = datetime.min # Reset cooldown on unplug
             return False
         
         self._wallbox_cable_was_on = True # Kabel ist jetzt eingesteckt
@@ -308,7 +308,7 @@ class MarstekCoordinator:
             _LOGGER.debug("Wallbox pause is currently active. Checking conditions to end pause.")
             # Regel 1.5: Überschuss weggefallen? -> -> Pause beenden (gilt nur, wenn das Auto nicht geladen hat)
             if (real_power >= -max_surplus) and (wb_power <= 100):
-                _LOGGER.info(f"Surplus ({abs(real_power):.0f}W) is below threshold ({max_surplus}W). Releasing batteries.")
+                _LOGGER.info(f"Surplus ({abs(real_power):.0f}W) is below threshold ({max_surplus}W). And Wallbox-Power ({wb_power}W) is below 100. Releasing batteries.")
                 self._wallbox_charge_paused = False
                 self._wallbox_power_history.clear()
                 self._wallbox_wait_start = None
