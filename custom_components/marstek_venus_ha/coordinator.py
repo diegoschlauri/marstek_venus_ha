@@ -329,9 +329,9 @@ class MarstekCoordinator:
                 self._wallbox_wait_start = None # Timer wird irrelevant, sobald das Auto lädt
                 if len(self._wallbox_power_history) == self._wallbox_power_history.maxlen:
                     # NEUE LOGIK: Prüfe die Spanne (Min/Max) der History
-                    min_power = min(self._wallbox_power_history)
-                    max_power = max(self._wallbox_power_history)
-                    power_spread = max_power - min_power # Die Differenz zwischen Min und Max
+                    min_power = min(self._wallbox_power_history)
+                    max_power = max(self._wallbox_power_history)
+                    power_spread = max_power - min_power # Die Differenz zwischen Min und Max
 
                     _LOGGER.debug(f"Wallbox resume check: Min={min_power:.0f}W, Max={max_power:.0f}W, Spread={power_spread:.0f}W")
 
