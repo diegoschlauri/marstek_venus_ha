@@ -328,11 +328,15 @@ class MarstekCoordinator:
             if wb_power > 100:
                 self._wallbox_wait_start = None # Timer wird irrelevant, sobald das Auto lädt
                 if len(self._wallbox_power_history) == self._wallbox_power_history.maxlen:
-                    avg_power = sum(self._wallbox_power_history) / len(self._wallbox_power_history)
-                    power_diff_from_avg = abs(wb_power - avg_power)
-                    _LOGGER.debug(f"Wallbox resume check: Current={wb_power:.0f}W, Avg={avg_power:.0f}W, Diff={power_diff_from_avg:.0f}W")
-                    if power_diff_from_avg < stability_treshold:
-                        _LOGGER.debug(f"Wallbox power has stabilized. Releasing batteries.")
+                    # NEUE LOGIK: Prüfe die Spanne (Min/Max) der History
+                    min_power = min(self._wallbox_power_history)
+                    max_power = max(self._wallbox_power_history)
+                    power_spread = max_power - min_power # Die Differenz zwischen Min und Max
+
+                    _LOGGER.debug(f"Wallbox resume check: Min={min_power:.0f}W, Max={max_power:.0f}W, Spread={power_spread:.0f}W")
+
+                    if power_spread < stability_treshold:
+                        _LOGGER.debug(f"Wallbox power has stabilized (Spread < {stability_treshold}W). Releasing batteries.")
                         self._wallbox_charge_paused = False
                         self._wallbox_power_history.clear()
                         return False
