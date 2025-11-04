@@ -340,6 +340,21 @@ class MarstekCoordinator:
                         self._wallbox_charge_paused = False
                         self._wallbox_power_history.clear()
                         return False
+                        
+            # Regel 4: Auto lädt nicht mehr seit X-Minuten -> Pause beenden
+            if wb_power < 100:
+                if self._wallbox_wait_start == None:
+                    _LOGGER.info(f"Wallbox: start new start-delay timer.")
+                    now = datetime.now()
+                    self._wallbox_wait_start = now        # Start-Delay-Timer (für den aktuellen Versuch) starten
+                elif self._wallbox_wait_start is not None:
+                    elapsed = (datetime.now() - self._wallbox_wait_start).total_seconds()
+                    if elapsed > start_delay:
+                        _LOGGER.info(f"Wallbox did not start charging again in {start_delay}s. Releasing batteries.")
+                        self._wallbox_charge_paused = False
+                        self._wallbox_power_history.clear()
+                        self._wallbox_wait_start = None
+                        return False
 
             # Keine Bedingung zum Beenden erfüllt -> Pause beibehalten
             _LOGGER.debug("Wallbox pause remains active. Batteries set to zero.")
