@@ -388,6 +388,30 @@ class MarstekCoordinator:
                     self._wallbox_charge_paused = True 
                     await self._set_all_batteries_to_zero() 
                     return True
+                # Regel 3 (WB Leistung erhöhen): Genug Überschuss UND Auto lädt UND Cooldown abgelaufen? -> Pause starten um Wallbox Prio zu geben
+            elif real_power < -max_surplus and wb_power >= 100:
+                now = datetime.now()
+                time_since_last_attempt = (now - self._last_wallbox_pause_attempt).total_seconds()
+                
+                # *** Die Pause sofort starten, wenn dies der ERSTE Versuch ist (datetime.min),
+                # *** ODER wenn der Cooldown abgelaufen ist.
+                is_first_attempt = self._last_wallbox_pause_attempt == datetime.min
+                cooldown_elapsed = time_since_last_attempt > retry_seconds
+
+                if is_first_attempt or cooldown_elapsed:
+                    
+                    # Wenn es nicht der erste Versuch ist, aber der Cooldown abgelaufen ist,
+                    # wird dies als INFO geloggt, da es ein normaler Retry ist.
+                    if cooldown_elapsed:
+                         _LOGGER.info(f"High surplus ({abs(real_power):.0f}W) and charging wallbox. Cooldown elapsed. Starting pause for car (batteries to 0 for {start_delay}s).")
+                    else: # is_first_attempt
+                         _LOGGER.info(f"High surplus ({abs(real_power):.0f}W) and wallbox just connected. Starting initial pause for car (batteries to 0 for {start_delay}s).")
+                         
+                    self._last_wallbox_pause_attempt = now # Cooldown-Timer (für den nächsten Versuch) starten
+                    self._wallbox_wait_start = now        # Start-Delay-Timer (für den aktuellen Versuch) starten
+                    self._wallbox_charge_paused = True 
+                    await self._set_all_batteries_to_zero() 
+                    return True
                 else:
                     _LOGGER.debug(f"High surplus, but wallbox pause is on cooldown ({time_since_last_attempt:.0f}s / {retry_seconds}s).")
         
