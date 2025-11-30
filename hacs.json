@@ -2,7 +2,7 @@
   "name": "Marstek Venus Homeassistant Control",
   "config_flow": true,
   "domains": ["marstek_venus_ha"],
-  "homeassistant": "2025.10.2",
+  "homeassistant": "2025.11.3",
   "country": "CH",
   "render_readme": true,
   "render_hacs": true,
