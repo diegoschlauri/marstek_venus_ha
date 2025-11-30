@@ -575,14 +575,14 @@ class MarstekCoordinator:
         try:
             if direction == 1: #Charging the Batteries
                 await self.hass.services.async_call("number", "set_value", {"entity_id": charge_entity, "value": power}, blocking=True)
-                await self.hass.services.async_call("select", "select_option", {"entity_id": force_mode, "option": "Charge"}, blocking=True)
+                await self.hass.services.async_call("select", "select_option", {"entity_id": force_mode, "option": "charge"}, blocking=True)
             elif direction == -1: #Discharging the Batteries
                 await self.hass.services.async_call("number", "set_value", {"entity_id": discharge_entity, "value": power}, blocking=True)
-                await self.hass.services.async_call("select", "select_option", {"entity_id": force_mode, "option": "Discharge"}, blocking=True)
+                await self.hass.services.async_call("select", "select_option", {"entity_id": force_mode, "option": "discharge"}, blocking=True)
             else: #Set to 0
                 await self.hass.services.async_call("number", "set_value", {"entity_id": charge_entity, "value": 0}, blocking=True)
                 await self.hass.services.async_call("number", "set_value", {"entity_id": discharge_entity, "value": 0}, blocking=True)
-                await self.hass.services.async_call("select", "select_option", {"entity_id": force_mode, "option": "None"}, blocking=True)
+                await self.hass.services.async_call("select", "select_option", {"entity_id": force_mode, "option": "standby"}, blocking=True)
 
             # Add a small delay to prevent overwhelming the device APIs
             await asyncio.sleep(0.1)
