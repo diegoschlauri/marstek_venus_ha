@@ -389,7 +389,7 @@ class MarstekCoordinator:
                     await self._set_all_batteries_to_zero() 
                     return True
                 # Regel 3 (WB Leistung erhöhen): Genug Überschuss UND Auto lädt UND Cooldown abgelaufen? -> Pause starten um Wallbox Prio zu geben
-            elif real_power < -max_surplus and wb_power >= 100:
+            elif (real_power - wb_power) < -max_surplus and wb_power >= 100:
                 now = datetime.now()
                 time_since_last_attempt = (now - self._last_wallbox_pause_attempt).total_seconds()
                 
@@ -403,9 +403,9 @@ class MarstekCoordinator:
                     # Wenn es nicht der erste Versuch ist, aber der Cooldown abgelaufen ist,
                     # wird dies als INFO geloggt, da es ein normaler Retry ist.
                     if cooldown_elapsed:
-                         _LOGGER.info(f"High surplus ({abs(real_power):.0f}W) and charging wallbox. Cooldown elapsed. Starting pause for car (batteries to 0 for {start_delay}s).")
+                         _LOGGER.info(f"High surplus ({abs(real_power - wb_power):.0f}W) and charging wallbox. Cooldown elapsed. Starting pause for car (batteries to 0 for {start_delay}s).")
                     else: # is_first_attempt
-                         _LOGGER.info(f"High surplus ({abs(real_power):.0f}W) and wallbox just connected. Starting initial pause for car (batteries to 0 for {start_delay}s).")
+                         _LOGGER.info(f"High surplus ({abs(real_power - wb_power):.0f}W) and wallbox just connected. Starting initial pause for car (batteries to 0 for {start_delay}s).")
                          
                     self._last_wallbox_pause_attempt = now # Cooldown-Timer (für den nächsten Versuch) starten
                     self._wallbox_wait_start = now        # Start-Delay-Timer (für den aktuellen Versuch) starten
