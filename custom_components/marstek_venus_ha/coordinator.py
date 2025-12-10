@@ -10,6 +10,7 @@ from homeassistant.helpers.event import async_track_time_interval, async_track_s
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN, STATE_ON
 
 from .const import (
+    CONF_CT_MODE,
     CONF_GRID_POWER_SENSOR,
     CONF_SMOOTHING_SECONDS,
     CONF_MIN_SURPLUS,
@@ -68,6 +69,10 @@ class MarstekCoordinator:
         self._wallbox_wait_start = None # Initialisiert: Timer für den Start-Delay
         self._wallbox_cable_was_on = False # Trackt den vorherigen Kabelzustand
 
+        # CT-Mode state
+        self._ct_mode = self.config.get(CONF_CT_MODE, False)
+        self._wallbox_is_active = False  # Track if wallbox currently controls
+
         # Collect battery entities
         self._battery_entities = [
             b for b in [
@@ -88,7 +93,7 @@ class MarstekCoordinator:
             
         return max(1, seconds)
 
-    async def wait_for_entity_available(self, entity_id, timeout=60):
+    async def wait_for_entity_available(self, entity_id, timeout=10):
         """Wait until the entity is available or timeout."""
         # Füge eine Sicherheitsabfrage hinzu, falls die entity_id leer ist
         if not entity_id:
@@ -147,6 +152,17 @@ class MarstekCoordinator:
             #Reset Batteries to 0 on Start-Up in background to avoid blocking startup
             self.hass.async_create_task(self._set_all_batteries_to_zero())            
             coordinator_update_interval = self.config.get(CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS)
+            # CT-Mode: Disable RS485 control mode (use automatic mode)
+            if self._ct_mode:
+                _LOGGER.info("CT-Mode enabled. Disabling RS485 Modbus control mode (setting batteries to automatic).")
+                for battery_base_id in self._battery_entities:
+                    modbus_control_mode = f"switch.{battery_base_id}_modbus_rs485_control_mode"
+                    await self.hass.services.async_call("switch", "turn_off", {"entity_id": modbus_control_mode}, blocking=True)
+            else:
+                _LOGGER.info("CT-Mode disabled. Batteries remain in manual/forcible mode.")
+
+            coordinator_update_interval = self._get_effective_update_interval()
+            _LOGGER.info(f"Starting coordinator with update interval: {coordinator_update_interval}s")
             self._unsub_listener = async_track_time_interval(
                 self.hass,
                 self._async_update,
@@ -183,8 +199,17 @@ class MarstekCoordinator:
             _LOGGER.warning("Could not determine real power. Skipping update cycle.")
             return
 
-        if await self._handle_wallbox_logic(real_power):
-            _LOGGER.debug("Wallbox logic took control. Ending update cycle.")
+        wallbox_took_control = await self._handle_wallbox_logic(real_power)
+        self._wallbox_is_active = wallbox_took_control
+        
+        if wallbox_took_control:
+            _LOGGER.info("Wallbox logic took control. Ending update cycle.")
+            return
+            
+        if self._ct_mode:
+            # In CT-Mode, if wallbox is not active, disable Modbus control mode
+            await self._disable_modbus_control_mode()
+            _LOGGER.debug("CT-Mode active. Disabling Modbus control mode for all batteries.")
             return
         
         await self._update_battery_priority_if_needed(real_power)
@@ -415,6 +440,11 @@ class MarstekCoordinator:
                 else:
                     _LOGGER.debug(f"High surplus, but wallbox pause is on cooldown ({time_since_last_attempt:.0f}s / {retry_seconds}s).")
         
+        # In CT-Mode: Nur aktivieren, wenn Kabel eingesteckt ist
+        if self._ct_mode:
+            _LOGGER.debug("CT-Mode active. Wallbox logic allowed to control only when cable is plugged in.")
+            # Cable-Check ist bereits implementiert oben (returns False wenn cable_on=False)
+            
         # Kein Grund zur Intervention -> Normale Batterielogik ausführen lassen
         return False
 
@@ -594,3 +624,30 @@ class MarstekCoordinator:
         _LOGGER.debug("Setting all batteries to 0W.")
         tasks = [self._set_battery_power(b_id, 0, 0) for b_id in self._battery_entities]
         await asyncio.gather(*tasks)
+
+    async def _disable_modbus_control_mode(self):
+        """Disable Modbus RS485 control mode for all batteries (set to automatic)."""
+        _LOGGER.debug("Disabling Modbus RS485 control mode for all batteries (setting to automatic).")
+        tasks = []
+        for battery_base_id in self._battery_entities:
+            modbus_control_mode = f"switch.{battery_base_id}_modbus_rs485_control_mode"
+            tasks.append(self.hass.services.async_call("switch", "turn_off", {"entity_id": modbus_control_mode}, blocking=True))
+        await asyncio.gather(*tasks)
+
+    def _get_effective_update_interval(self) -> int:
+        """Calculate the effective update interval based on CT-Mode and wallbox activity."""
+        configured_interval = self.config.get(CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS, 60)
+        
+        # In CT-Mode, use 10s unless wallbox is active
+        if self._ct_mode:
+            if self._wallbox_is_active:
+                # Wallbox is in control, keep configured interval
+                _LOGGER.debug(f"CT-Mode: Wallbox active, using configured interval ({configured_interval}s)")
+                return configured_interval
+            else:
+                # No wallbox activity, use 10s refresh rate
+                _LOGGER.debug("CT-Mode: No wallbox activity, using 30s refresh rate")
+                return 10
+        else:
+            # Normal mode: use configured interval
+            return configured_interval

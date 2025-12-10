@@ -3,6 +3,7 @@
 DOMAIN = "marstek_venus_ha"
 
 # Configuration Keys
+CONF_CT_MODE = "ct_mode"
 CONF_GRID_POWER_SENSOR = "grid_power_sensor"
 CONF_SMOOTHING_SECONDS = "smoothing_seconds"
 CONF_MIN_SURPLUS = "min_surplus"
@@ -30,6 +31,7 @@ CONF_WALLBOX_START_DELAY_SECONDS = "wallbox_start_delay_seconds"
 CONF_WALLBOX_RETRY_MINUTES = "wallbox_retry_minutes"
 CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS = "coordinator_update_interval_seconds"
 # Default values
+DEFAULT_CT_MODE = False
 DEFAULT_SMOOTHING_SECONDS = 0
 DEFAULT_MIN_SURPLUS = 200
 DEFAULT_MIN_CONSUMPTION = 200

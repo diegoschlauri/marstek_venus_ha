@@ -7,6 +7,7 @@ from homeassistant.helpers import selector
 
 from .const import (
     DOMAIN,
+    CONF_CT_MODE,
     CONF_GRID_POWER_SENSOR,
     CONF_SMOOTHING_SECONDS,
     CONF_MIN_SURPLUS,
@@ -32,6 +33,7 @@ from .const import (
     CONF_WALLBOX_START_DELAY_SECONDS,
     CONF_WALLBOX_RETRY_MINUTES,
     CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS,
+    DEFAULT_CT_MODE,
     DEFAULT_SMOOTHING_SECONDS,
     DEFAULT_MIN_SURPLUS,
     DEFAULT_MIN_CONSUMPTION,
@@ -66,7 +68,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_create_entry(title="Marstek Venus HA Integration", data=user_input)
 
         data_schema = vol.Schema(
-            {
+            {   vol.Required(CONF_CT_MODE, default=DEFAULT_CT_MODE): bool,
                 vol.Required(CONF_GRID_POWER_SENSOR): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
@@ -120,6 +122,12 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
         # with a fallback to the original 'data'.
         options_schema = vol.Schema(
             {
+                vol.Required(
+                    CONF_CT_MODE,
+                    default=self.config_entry.options.get(
+                        CONF_CT_MODE, self.config_entry.data.get(CONF_CT_MODE, DEFAULT_CT_MODE)
+                    ),
+                ): bool,
                 vol.Required(
                     CONF_GRID_POWER_SENSOR,
                     default=self.config_entry.options.get(
