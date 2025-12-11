@@ -453,28 +453,21 @@ class MarstekCoordinator:
 
     async def _update_battery_priority_if_needed(self, real_power: float):
         """Check conditions and update battery priority list."""
-        min_surplus_for_check = self.config.get(CONF_MIN_SURPLUS, 50)
-        min_consumption_for_check = self.config.get(CONF_MIN_CONSUMPTION, 50)
-
-        # ignore min and max for ct_mode
-        if self._ct_mode:
-            min_surplus_for_check = 0
-            min_consumption_for_check = 0
         
         # power direction: 1 for charging, -1 for discharging, 0 for neutral
         power_direction = 0
 
         # decide the new direction
-        if real_power  < -abs(min_surplus_for_check):
+        if real_power  < 0:
             power_direction = 1 # charging
-        elif real_power  > abs(min_consumption_for_check):
+        elif real_power  > 0:
             power_direction = -1 # discharging
 
         priority_interval = timedelta(minutes=self.config.get(CONF_PRIORITY_INTERVAL))
         time_since_last_update = datetime.now() - self._last_priority_update
 
-        # Rate limit: only allow updates at most once per 30 seconds
-        min_update_interval = timedelta(seconds=30)
+        # Rate limit: only allow updates at most once per 10 seconds
+        min_update_interval = timedelta(seconds=10)
 
         if (
             power_direction != self._last_power_direction or
@@ -579,6 +572,7 @@ class MarstekCoordinator:
             # Dies deckt num_available == 3 oder mehr ab
             target_num_batteries = min(target_num_batteries, 3)
 
+        _LOGGER.debug(f"Determined target number of batteries: {target_num_batteries} (Available: {num_available}, Currently Active: {num_currently_active})")
         return target_num_batteries
 
     async def _distribute_power(self, power: float, target_num_batteries: int = 1):
@@ -600,6 +594,20 @@ class MarstekCoordinator:
         max_discharge_power = self.config.get(CONF_MAX_DISCHARGE_POWER, 2500)
         max_charge_power = self.config.get(CONF_MAX_CHARGE_POWER, 2500)
 
+        min_surplus_for_chargin = self.config.get(CONF_MIN_SURPLUS, 50)
+        min_consumption_for_discharging = self.config.get(CONF_MIN_CONSUMPTION, 50)
+
+        # Check minimum thresholds to activate charging/discharging
+        if self._last_power_direction == 1 and abs_power < min_surplus_for_chargin:
+            _LOGGER.debug(f"Charging power ({abs_power:.0f}W) below minimum surplus threshold ({min_surplus_for_chargin}W). Setting all batteries to 0W.")
+            await self._set_all_batteries_to_zero()
+            return
+        
+        if self._last_power_direction == -1 and abs_power < min_consumption_for_discharging:
+            _LOGGER.debug(f"Discharging power ({abs_power:.0f}W) below minimum consumption threshold ({min_consumption_for_discharging}W). Setting all batteries to 0W.")
+            await self._set_all_batteries_to_zero()
+            return
+
         # If no batteries should be active, ensure everything is set to 0 and exit.
         if target_num_batteries == 0:
             await self._set_all_batteries_to_zero()
@@ -609,7 +617,7 @@ class MarstekCoordinator:
 
         # Safeguard: if active_batteries is empty (priority list empty), set all to zero and return
         if not active_batteries:
-            _LOGGER.warning(f"No available batteries in priority list (target: {target_num_batteries}). Setting all to zero.")
+            _LOGGER.debug(f"No available batteries in priority list (target: {target_num_batteries}). Setting all to zero.")
             await self._set_all_batteries_to_zero()
             return
 
@@ -702,7 +710,7 @@ class MarstekCoordinator:
                 return configured_interval
             else:
                 # No wallbox activity, use 10s refresh rate
-                _LOGGER.debug("CT-Mode: No wallbox activity, using 30s refresh rate")
+                _LOGGER.debug("CT-Mode: No wallbox activity, using 10s refresh rate")
                 return 10
         else:
             # Normal mode: use configured interval
