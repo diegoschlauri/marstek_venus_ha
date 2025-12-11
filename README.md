@@ -81,7 +81,7 @@ Nach der Installation können Sie die Integration über die Home Assistant UI hi
 
 | Parameter | Beschreibung | Beispiel |
 | --- | --- | --- |
-| **CT Mode** | Wenn der CT-Mode eingestellt wird, wird die Leistungsregelung durch das Pythonscript deaktiviert. Einzig die Wallbox logik bleibt aktiv. Gibt es genügend Überschuss (> wallbox_max_surplus) und ist ein Auto, übernimmt die Steuerung die Batterien. Ansonsten lauft die Steuerung über die normale Logik von Marstek. Diesen Parameter nur einschalten wenn auch ein CT in der Marstek-App konfiguriert ist. Das Update Interval geht im CT-Modus automatisch auf 10s. | `False` |
+| **CT Mode** | Wenn der CT-Mode eingestellt wird, wird die Leistungsregelung durch das Pythonscript deaktiviert. Einzig die Wallbox logik bleibt aktiv. Gibt es genügend Überschuss (> wallbox_max_surplus) und ist ein Auto, übernimmt die Steuerung die Batterien. Ansonsten lauft die Steuerung über die normale Logik von Marstek. Diesen Parameter nur einschalten wenn auch ein CT in der Marstek-App konfiguriert ist. Das Update Interval geht im CT-Modus automatisch auf 10s. Die Logik der Leistungsstufen ist im CT-Modus ebenfalls aktiv. Via RS485 Parameter wird gesteuert wieviele Batterien jeweils freigeschaltet werden. | `False` |
 | **ID des Netzanschluss-Leistungssensors** | Die Sensor-ID, die den aktuellen Netzbezug (+) oder die Einspeisung (-) in Watt misst. | `sensor.power_meter_power` |
 | **Leistungsglättung in Sekunden** | Zeitfenster in Sekunden, über das der Durchschnitt der Netzleistung gebildet wird. Wird der Wert 0 gesetzt findet keine Glättung statt und der aktuellste Wert wird verwendet | `0` |
 | **Minimaler Überschuss** | Minimaler Leistungsüberschuss in Watt damit die Ladung staret. | `200` |

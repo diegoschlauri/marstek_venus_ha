@@ -205,15 +205,20 @@ class MarstekCoordinator:
         if wallbox_took_control:
             _LOGGER.info("Wallbox logic took control. Ending update cycle.")
             return
-            
+
+        # Get battery priority
+        await self._update_battery_priority_if_needed(real_power)
+
+        # Determine desired number of batteries based on power stages
+        number_of_batteries = self._get_desired_number_of_batteries(real_power) 
+
         if self._ct_mode:
             # In CT-Mode, if wallbox is not active, disable Modbus control mode
-            await self._disable_modbus_control_mode()
-            _LOGGER.debug("CT-Mode active. Disabling Modbus control mode for all batteries.")
-            return
-        
-        await self._update_battery_priority_if_needed(real_power)
-        await self._distribute_power(real_power, self._last_power_direction)
+            await self._disable_modbus_control_mode(number_of_batteries)
+            _LOGGER.debug("CT-Mode active. Disabling Modbus control mode for needed batteries.")
+        else:
+            # Distribute power among batteries via Modbus control
+            await self._distribute_power(real_power, number_of_batteries)
 
     def _get_float_state(self, entity_id: str) -> float | None:
         """Safely get a float value from a state."""
@@ -261,11 +266,9 @@ class MarstekCoordinator:
                 ] if p is not None and p != 0
             )
         
-        # Calculate real power based on batterie direction
-        if self._last_power_direction == -1: #Batteries are actually discharging 
-            real_power = (smoothed_grid_power + abs(total_battery_power)) 
-        elif self._last_power_direction == 1: #Batteries are actually charging
-            real_power = (smoothed_grid_power - abs(total_battery_power))
+        # Calculate real power based on batterie power
+        if total_battery_power != 0:
+            real_power = (smoothed_grid_power + total_battery_power)
         else:
             real_power = smoothed_grid_power
         
@@ -498,13 +501,10 @@ class MarstekCoordinator:
         self._battery_priority = sorted(available_batteries, key=lambda x: x['soc'], reverse=is_reverse)
         _LOGGER.debug(f"New battery priority: {self._battery_priority}")
 
-    async def _distribute_power(self, power: float, power_direction: int):
-        """Control battery charge/discharge based on power stages."""
+    async def _get_desired_number_of_batteries(self, power: float) -> int:
         abs_power = abs(power)
         stage_offset = self.config.get(CONF_POWER_STAGE_OFFSET, 50)
-        max_discharge_power = self.config.get(CONF_MAX_DISCHARGE_POWER,2500)
-        max_charge_power = self.config.get(CONF_MAX_CHARGE_POWER,2500)
-        if power_direction == -1: #Currently Discharging
+        if self._last_power_direction == -1: #Currently Discharging
             stage1 = self.config.get(CONF_POWER_STAGE_DISCHARGE_1)
             stage2 = self.config.get(CONF_POWER_STAGE_DISCHARGE_2)
         else:
@@ -512,9 +512,6 @@ class MarstekCoordinator:
             stage2 = self.config.get(CONF_POWER_STAGE_CHARGE_2)
         
         num_available = len(self._battery_priority)
-        if num_available == 0 or self._last_power_direction == 0:
-            await self._set_all_batteries_to_zero()
-            return
         
         # 1. Ermittle die Anzahl der Batterien, die aktuell Leistung liefern/aufnehmen
         num_currently_active = 0
@@ -570,6 +567,14 @@ class MarstekCoordinator:
             # Dies deckt num_available == 3 oder mehr ab
             target_num_batteries = min(target_num_batteries, 3)
 
+        return target_num_batteries
+
+    async def _distribute_power(self, power: float, target_num_batteries: int = 1):
+        """Control battery charge/discharge based on power stages."""
+        abs_power = abs(power)
+        max_discharge_power = self.config.get(CONF_MAX_DISCHARGE_POWER,2500)
+        max_charge_power = self.config.get(CONF_MAX_CHARGE_POWER,2500)
+
         active_batteries = self._battery_priority[:target_num_batteries]
 
         if not active_batteries:
@@ -578,9 +583,9 @@ class MarstekCoordinator:
 
         power_per_battery = round(abs_power / len(active_batteries))
         # Ensure we do not exceed max charge/discharge power
-        if power_direction == 1: #Charging
+        if self._last_power_direction == 1: #Charging
             power_per_battery = min(power_per_battery, max_charge_power)
-        elif power_direction == -1: #Discharging
+        elif self._last_power_direction == -1: #Discharging
             power_per_battery = min(power_per_battery, max_discharge_power) 
 
         active_battery_ids = [b['id'] for b in active_batteries]
@@ -625,13 +630,32 @@ class MarstekCoordinator:
         tasks = [self._set_battery_power(b_id, 0, 0) for b_id in self._battery_entities]
         await asyncio.gather(*tasks)
 
-    async def _disable_modbus_control_mode(self):
-        """Disable Modbus RS485 control mode for all batteries (set to automatic)."""
-        _LOGGER.debug("Disabling Modbus RS485 control mode for all batteries (setting to automatic).")
+    async def _disable_modbus_control_mode(self, target_num_batteries: int = 1):
+        """Disable Modbus RS485 control mode based on power stages and battery priority.
+    
+        - Power < Stage1: Disable only for highest priority battery, enable for others
+        - Stage1 <= Power < Stage2: Disable for top 2 batteries, enable for others
+        - Power >= Stage2: Disable for all batteries (full automatic mode)
+        - No power direction: Disable for all batteries
+        """
+
+        # Get list of batteries that should have Modbus control disabled
+        batteries_to_disable_list = [b['id'] for b in self._battery_priority[:target_num_batteries]]
+
+        _LOGGER.debug(f"Disabling Modbus control for {target_num_batteries} batteries: {batteries_to_disable_list}")
+
         tasks = []
         for battery_base_id in self._battery_entities:
             modbus_control_mode = f"switch.{battery_base_id}_modbus_rs485_control_mode"
-            tasks.append(self.hass.services.async_call("switch", "turn_off", {"entity_id": modbus_control_mode}, blocking=True))
+            
+            if battery_base_id in batteries_to_disable_list:
+                # Disable Modbus control (turn off) - set to automatic
+                tasks.append(self.hass.services.async_call("switch", "turn_off", {"entity_id": modbus_control_mode}, blocking=True))
+            else:
+                # Enable Modbus control (turn on) - keep in manual/forcible mode
+                tasks.append(self.hass.services.async_call("switch", "turn_on", {"entity_id": modbus_control_mode}, blocking=True))
+                tasks.append(self._set_battery_power(battery_base_id, 0, 0)) # Set power to 0 for batteries not in control
+
         await asyncio.gather(*tasks)
 
     def _get_effective_update_interval(self) -> int:
