@@ -455,6 +455,11 @@ class MarstekCoordinator:
         """Check conditions and update battery priority list."""
         min_surplus_for_check = self.config.get(CONF_MIN_SURPLUS, 50)
         min_consumption_for_check = self.config.get(CONF_MIN_CONSUMPTION, 50)
+
+        # ignore min and max for ct_mode
+        if self._ct_mode:
+            min_surplus_for_check = 0
+            min_consumption_for_check = 0
         
         # power direction: 1 for charging, -1 for discharging, 0 for neutral
         power_direction = 0
@@ -468,14 +473,21 @@ class MarstekCoordinator:
         priority_interval = timedelta(minutes=self.config.get(CONF_PRIORITY_INTERVAL))
         time_since_last_update = datetime.now() - self._last_priority_update
 
+        # Rate limit: only allow updates at most once per 30 seconds
+        min_update_interval = timedelta(seconds=30)
+
         if (
             power_direction != self._last_power_direction or
             time_since_last_update > priority_interval
         ):
-            _LOGGER.info(f"Recalculating battery priority. Reason: {'Power direction changed' if power_direction != self._last_power_direction else 'Time interval elapsed'}")
-            await self._calculate_battery_priority(power_direction)
-            self._last_power_direction = power_direction
-            self._last_priority_update = datetime.now()
+            # Check if enough time has passed since last update
+            if time_since_last_update >= min_update_interval:
+                _LOGGER.info(f"Recalculating battery priority. Reason: {'Power direction changed' if power_direction != self._last_power_direction else 'Time interval elapsed'}")
+                await self._calculate_battery_priority(power_direction)
+                self._last_power_direction = power_direction
+                self._last_priority_update = datetime.now()
+            else:
+                _LOGGER.debug(f"Priority update triggered but rate-limited. Will retry in {(min_update_interval - time_since_last_update).total_seconds():.0f}s")
 
     async def _calculate_battery_priority(self, power_direction: int):
         """Calculate the sorted list of batteries based on SoC."""
@@ -594,6 +606,12 @@ class MarstekCoordinator:
             return
 
         active_batteries = self._battery_priority[:target_num_batteries]
+
+        # Safeguard: if active_batteries is empty (priority list empty), set all to zero and return
+        if not active_batteries:
+            _LOGGER.warning(f"No available batteries in priority list (target: {target_num_batteries}). Setting all to zero.")
+            await self._set_all_batteries_to_zero()
+            return
 
         power_per_battery = round(abs_power / len(active_batteries))
         # Ensure we do not exceed max charge/discharge power
