@@ -501,7 +501,7 @@ class MarstekCoordinator:
         self._battery_priority = sorted(available_batteries, key=lambda x: x['soc'], reverse=is_reverse)
         _LOGGER.debug(f"New battery priority: {self._battery_priority}")
 
-    async def _get_desired_number_of_batteries(self, power: float) -> int:
+    def _get_desired_number_of_batteries(self, power: float) -> int:
         abs_power = abs(power)
         stage_offset = self.config.get(CONF_POWER_STAGE_OFFSET, 50)
         if self._last_power_direction == -1: #Currently Discharging
@@ -571,15 +571,29 @@ class MarstekCoordinator:
 
     async def _distribute_power(self, power: float, target_num_batteries: int = 1):
         """Control battery charge/discharge based on power stages."""
+        # Defensive: ensure target_num_batteries is an int and within valid range
+        try:
+            target_num_batteries = int(target_num_batteries) if target_num_batteries is not None else 0
+        except (ValueError, TypeError):
+            _LOGGER.warning("Invalid target_num_batteries '%s', defaulting to 0", target_num_batteries)
+            target_num_batteries = 0
+
+        if target_num_batteries < 0:
+            target_num_batteries = 0
+        max_batt = len(self._battery_entities)
+        if target_num_batteries > max_batt:
+            target_num_batteries = max_batt
+
         abs_power = abs(power)
-        max_discharge_power = self.config.get(CONF_MAX_DISCHARGE_POWER,2500)
-        max_charge_power = self.config.get(CONF_MAX_CHARGE_POWER,2500)
+        max_discharge_power = self.config.get(CONF_MAX_DISCHARGE_POWER, 2500)
+        max_charge_power = self.config.get(CONF_MAX_CHARGE_POWER, 2500)
 
-        active_batteries = self._battery_priority[:target_num_batteries]
-
-        if not active_batteries:
+        # If no batteries should be active, ensure everything is set to 0 and exit.
+        if target_num_batteries == 0:
             await self._set_all_batteries_to_zero()
             return
+
+        active_batteries = self._battery_priority[:target_num_batteries]
 
         power_per_battery = round(abs_power / len(active_batteries))
         # Ensure we do not exceed max charge/discharge power
