@@ -33,6 +33,11 @@ from .const import (
     CONF_WALLBOX_START_DELAY_SECONDS,
     CONF_WALLBOX_RETRY_MINUTES,
     CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS,
+    CONF_SERVICE_CALL_CACHE_SECONDS,
+    CONF_PID_ENABLED,
+    CONF_PID_KP,
+    CONF_PID_KI,
+    CONF_PID_KD,
     DEFAULT_CT_MODE,
     DEFAULT_SMOOTHING_SECONDS,
     DEFAULT_MIN_SURPLUS,
@@ -52,7 +57,12 @@ from .const import (
     DEFAULT_WALLBOX_RESUME_CHECK_SECONDS,
     DEFAULT_WALLBOX_START_DELAY_SECONDS,
     DEFAULT_WALLBOX_RETRY_MINUTES,
-    DEFAULT_COORDINATOR_UPDATE_INTERVAL_SECONDS
+    DEFAULT_COORDINATOR_UPDATE_INTERVAL_SECONDS,
+    DEFAULT_SERVICE_CALL_CACHE_SECONDS,
+    DEFAULT_PID_ENABLED,
+    DEFAULT_PID_KP,
+    DEFAULT_PID_KI,
+    DEFAULT_PID_KD,
 )
 
 class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -95,7 +105,12 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_WALLBOX_RESUME_CHECK_SECONDS, default=DEFAULT_WALLBOX_RESUME_CHECK_SECONDS): int,
                 vol.Optional(CONF_WALLBOX_START_DELAY_SECONDS, default=DEFAULT_WALLBOX_START_DELAY_SECONDS): int,
                 vol.Optional(CONF_WALLBOX_RETRY_MINUTES, default=DEFAULT_WALLBOX_RETRY_MINUTES): int,
-                vol.Required(CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS, default=DEFAULT_COORDINATOR_UPDATE_INTERVAL_SECONDS): int
+                vol.Required(CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS, default=DEFAULT_COORDINATOR_UPDATE_INTERVAL_SECONDS): int,
+                vol.Required(CONF_SERVICE_CALL_CACHE_SECONDS, default=DEFAULT_SERVICE_CALL_CACHE_SECONDS): int,
+                vol.Required(CONF_PID_ENABLED, default=DEFAULT_PID_ENABLED): bool,
+                vol.Required(CONF_PID_KP, default=DEFAULT_PID_KP): vol.Coerce(float),
+                vol.Required(CONF_PID_KI, default=DEFAULT_PID_KI): vol.Coerce(float),
+                vol.Required(CONF_PID_KD, default=DEFAULT_PID_KD): vol.Coerce(float)
 
             }
         )
@@ -278,6 +293,36 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS, self.config_entry.data.get(CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS, DEFAULT_COORDINATOR_UPDATE_INTERVAL_SECONDS)
                     ),
                 ): int,
+                vol.Required(
+                    CONF_SERVICE_CALL_CACHE_SECONDS,
+                    default=self.config_entry.options.get(
+                        CONF_SERVICE_CALL_CACHE_SECONDS, self.config_entry.data.get(CONF_SERVICE_CALL_CACHE_SECONDS, DEFAULT_SERVICE_CALL_CACHE_SECONDS)
+                    ),
+                ): int,
+                vol.Required(
+                    CONF_PID_ENABLED,
+                    default=self.config_entry.options.get(
+                        CONF_PID_ENABLED, self.config_entry.data.get(CONF_PID_ENABLED, DEFAULT_PID_ENABLED)
+                    ),
+                ): bool,
+                vol.Required(
+                    CONF_PID_KP,
+                    default=self.config_entry.options.get(
+                        CONF_PID_KP, self.config_entry.data.get(CONF_PID_KP, DEFAULT_PID_KP)
+                    ),
+                ): vol.Coerce(float),
+                vol.Required(
+                    CONF_PID_KI,
+                    default=self.config_entry.options.get(
+                        CONF_PID_KI, self.config_entry.data.get(CONF_PID_KI, DEFAULT_PID_KI)
+                    ),
+                ): vol.Coerce(float),
+                vol.Required(
+                    CONF_PID_KD,
+                    default=self.config_entry.options.get(
+                        CONF_PID_KD, self.config_entry.data.get(CONF_PID_KD, DEFAULT_PID_KD)
+                    ),
+                ): vol.Coerce(float),
             }
         )
 

@@ -3,6 +3,7 @@ import logging
 from collections import deque
 from datetime import datetime, timedelta
 import asyncio
+from typing import Any
 
 from homeassistant.core import HomeAssistant, State
 from homeassistant.config_entries import ConfigEntry
@@ -35,7 +36,17 @@ from .const import (
     CONF_WALLBOX_RESUME_CHECK_SECONDS,
     CONF_WALLBOX_START_DELAY_SECONDS,
     CONF_WALLBOX_RETRY_MINUTES,
-    CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS
+    CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS,
+    CONF_SERVICE_CALL_CACHE_SECONDS,
+    DEFAULT_SERVICE_CALL_CACHE_SECONDS,
+    CONF_PID_ENABLED,
+    CONF_PID_KP,
+    CONF_PID_KI,
+    CONF_PID_KD,
+    DEFAULT_PID_ENABLED,
+    DEFAULT_PID_KP,
+    DEFAULT_PID_KI,
+    DEFAULT_PID_KD,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -52,6 +63,21 @@ class MarstekCoordinator:
         self.config = dict(entry.data)
         # ...und überschreibe sie mit den Werten aus dem Options-Flow.
         self.config.update(entry.options)
+
+        self._service_call_cache: dict[tuple[str, str, str, str], tuple[Any, datetime]] = {}
+        self._service_call_cache_ttl_seconds = self.config.get(
+            CONF_SERVICE_CALL_CACHE_SECONDS,
+            DEFAULT_SERVICE_CALL_CACHE_SECONDS,
+        )
+
+        self._pid_enabled = self.config.get(CONF_PID_ENABLED, DEFAULT_PID_ENABLED)
+        self._pid_kp = self.config.get(CONF_PID_KP, DEFAULT_PID_KP)
+        self._pid_ki = self.config.get(CONF_PID_KI, DEFAULT_PID_KI)
+        self._pid_kd = self.config.get(CONF_PID_KD, DEFAULT_PID_KD)
+
+        self._pid_integral = 0.0
+        self._pid_prev_error: float | None = None
+        self._pid_prev_ts: datetime | None = None
 
         self._is_running = False
         self._unsub_listener = None
@@ -81,6 +107,52 @@ class MarstekCoordinator:
                 self.config.get(CONF_BATTERY_3_ENTITY),
             ] if b
         ]
+
+    def _get_service_call_cache_ttl(self) -> timedelta:
+        try:
+            seconds = int(self._service_call_cache_ttl_seconds)
+        except (ValueError, TypeError):
+            seconds = int(DEFAULT_SERVICE_CALL_CACHE_SECONDS)
+        if seconds <= 0:
+            return timedelta(seconds=0)
+        return timedelta(seconds=seconds)
+
+    async def _async_call_cached(
+        self,
+        domain: str,
+        service: str,
+        entity_id: str,
+        cache_field: str,
+        cache_value: Any,
+        service_data: dict[str, Any],
+        *,
+        blocking: bool = True,
+        force: bool = False,
+    ) -> None:
+        ttl = self._get_service_call_cache_ttl()
+        now = datetime.now()
+        cache_key = (domain, service, entity_id, cache_field)
+
+        if not force:
+            cached = self._service_call_cache.get(cache_key)
+            if cached is not None:
+                last_value, last_ts = cached
+                is_same_value = last_value == cache_value
+                is_expired = ttl.total_seconds() > 0 and (now - last_ts) > ttl
+
+                if is_same_value and not is_expired:
+                    _LOGGER.debug(
+                        "Skipping cached service call %s.%s for %s (%s=%s)",
+                        domain,
+                        service,
+                        entity_id,
+                        cache_field,
+                        cache_value,
+                    )
+                    return
+
+        await self.hass.services.async_call(domain, service, service_data, blocking=blocking)
+        self._service_call_cache[cache_key] = (cache_value, now)
 
     def _get_deque_size(self, mode: str):
         """Calculate deque size based on config."""
@@ -204,6 +276,12 @@ class MarstekCoordinator:
         
         if wallbox_took_control:
             _LOGGER.info("Wallbox logic took control. Ending update cycle.")
+            self._pid_prev_error = None
+            self._pid_prev_ts = None
+            return
+
+        if not self._ct_mode and self._pid_enabled:
+            await self._pid_control_step(real_power)
             return
 
         # Get battery priority
@@ -219,6 +297,87 @@ class MarstekCoordinator:
         else:
             # Distribute power among batteries via Modbus control
             await self._distribute_power(real_power, number_of_batteries)
+
+    async def _pid_control_step(self, real_power: float) -> None:
+        """Run one PID control step to drive real_power towards 0W."""
+        # Error is defined such that:
+        # - Surplus (real_power < 0) -> positive error -> positive output -> charging
+        # - Import  (real_power > 0) -> negative error -> negative output -> discharging
+        error = -float(real_power)
+        now = datetime.now()
+        output = self._pid_compute_output(error, now)
+
+        if output == 0:
+            await self._set_all_batteries_to_zero()
+            return
+
+        direction = 1 if output > 0 else -1
+        requested_abs_power = int(round(abs(output)))
+
+        # Ensure staging logic uses the intended direction
+        self._last_power_direction = direction
+
+        # Update priority list deterministically for the intended direction
+        await self._calculate_battery_priority(direction)
+        self._last_priority_update = now
+
+        # Determine how many batteries to use based on requested output magnitude
+        number_of_batteries = self._get_desired_number_of_batteries(requested_abs_power)
+
+        # Clamp to configured max power before distributing
+        max_discharge_power = int(self.config.get(CONF_MAX_DISCHARGE_POWER, 2500))
+        max_charge_power = int(self.config.get(CONF_MAX_CHARGE_POWER, 2500))
+        max_total = max_charge_power if direction == 1 else max_discharge_power
+
+        requested_abs_power = min(requested_abs_power, max_total * max(1, number_of_batteries))
+
+        # _distribute_power uses abs(power) and self._last_power_direction for mode,
+        # so just feed it the magnitude here.
+        await self._distribute_power(float(requested_abs_power), number_of_batteries)
+
+    def _pid_compute_output(self, error: float, now: datetime) -> float:
+        """Compute PID output in Watts (signed)."""
+        try:
+            kp = float(self._pid_kp)
+            ki = float(self._pid_ki)
+            kd = float(self._pid_kd)
+        except (ValueError, TypeError):
+            kp = float(DEFAULT_PID_KP)
+            ki = float(DEFAULT_PID_KI)
+            kd = float(DEFAULT_PID_KD)
+
+        if self._pid_prev_ts is None:
+            dt = 0.0
+        else:
+            dt = max(0.0, (now - self._pid_prev_ts).total_seconds())
+
+        # Integral term with basic anti-windup clamping
+        if dt > 0 and ki != 0:
+            self._pid_integral += error * dt
+
+            max_discharge_power = float(self.config.get(CONF_MAX_DISCHARGE_POWER, 2500))
+            max_charge_power = float(self.config.get(CONF_MAX_CHARGE_POWER, 2500))
+            max_out = max(max_charge_power, max_discharge_power)
+
+            max_integral = max_out / abs(ki)
+            if self._pid_integral > max_integral:
+                self._pid_integral = max_integral
+            elif self._pid_integral < -max_integral:
+                self._pid_integral = -max_integral
+
+        derivative = 0.0
+        if dt > 0 and self._pid_prev_error is not None:
+            derivative = (error - self._pid_prev_error) / dt
+
+        self._pid_prev_error = error
+        self._pid_prev_ts = now
+
+        output = (kp * error) + (ki * self._pid_integral) + (kd * derivative)
+
+        if abs(output) < 1.0:
+            return 0.0
+
+        return output
 
     def _get_float_state(self, entity_id: str) -> float | None:
         """Safely get a float value from a state."""
@@ -645,19 +804,83 @@ class MarstekCoordinator:
         force_mode= f"select.{base_entity_id}_modbus_force_mode"
         modbus_control_mode = f"switch.{base_entity_id}_modbus_rs485_control_mode"
         # Ensure Modbus control mode is set to 'forcible'
-        await self.hass.services.async_call("switch", "turn_on", {"entity_id": modbus_control_mode}, blocking=True)
+        await self._async_call_cached(
+            "switch",
+            "turn_on",
+            modbus_control_mode,
+            "state",
+            True,
+            {"entity_id": modbus_control_mode},
+            blocking=True,
+        )
         
         try:
             if direction == 1: #Charging the Batteries
-                await self.hass.services.async_call("number", "set_value", {"entity_id": charge_entity, "value": power}, blocking=True)
-                await self.hass.services.async_call("select", "select_option", {"entity_id": force_mode, "option": "charge"}, blocking=True)
+                await self._async_call_cached(
+                    "number",
+                    "set_value",
+                    charge_entity,
+                    "value",
+                    power,
+                    {"entity_id": charge_entity, "value": power},
+                    blocking=True,
+                )
+                await self._async_call_cached(
+                    "select",
+                    "select_option",
+                    force_mode,
+                    "option",
+                    "charge",
+                    {"entity_id": force_mode, "option": "charge"},
+                    blocking=True,
+                )
             elif direction == -1: #Discharging the Batteries
-                await self.hass.services.async_call("number", "set_value", {"entity_id": discharge_entity, "value": power}, blocking=True)
-                await self.hass.services.async_call("select", "select_option", {"entity_id": force_mode, "option": "discharge"}, blocking=True)
+                await self._async_call_cached(
+                    "number",
+                    "set_value",
+                    discharge_entity,
+                    "value",
+                    power,
+                    {"entity_id": discharge_entity, "value": power},
+                    blocking=True,
+                )
+                await self._async_call_cached(
+                    "select",
+                    "select_option",
+                    force_mode,
+                    "option",
+                    "discharge",
+                    {"entity_id": force_mode, "option": "discharge"},
+                    blocking=True,
+                )
             else: #Set to 0
-                await self.hass.services.async_call("number", "set_value", {"entity_id": charge_entity, "value": 0}, blocking=True)
-                await self.hass.services.async_call("number", "set_value", {"entity_id": discharge_entity, "value": 0}, blocking=True)
-                await self.hass.services.async_call("select", "select_option", {"entity_id": force_mode, "option": "standby"}, blocking=True)
+                await self._async_call_cached(
+                    "number",
+                    "set_value",
+                    charge_entity,
+                    "value",
+                    0,
+                    {"entity_id": charge_entity, "value": 0},
+                    blocking=True,
+                )
+                await self._async_call_cached(
+                    "number",
+                    "set_value",
+                    discharge_entity,
+                    "value",
+                    0,
+                    {"entity_id": discharge_entity, "value": 0},
+                    blocking=True,
+                )
+                await self._async_call_cached(
+                    "select",
+                    "select_option",
+                    force_mode,
+                    "option",
+                    "standby",
+                    {"entity_id": force_mode, "option": "standby"},
+                    blocking=True,
+                )
 
             # Add a small delay to prevent overwhelming the device APIs
             await asyncio.sleep(0.1)
