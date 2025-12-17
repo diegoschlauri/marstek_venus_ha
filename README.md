@@ -7,7 +7,7 @@ This is a custom Home Assistant integration for intelligent control of up to thr
 The integration does not control all batteries at the same time. Instead, it enables them in power levels to maximize efficiency and optimize self-consumption. It includes dynamic battery prioritization based on state of charge (SoC) and an advanced, optional logic for interacting with a wallbox/EV charger.
 
 This is a fork of https://github.com/diegoschlauri/marstek_venus_ha with added PID control logic and caching of the HA service calls to avoid too many calls to the batteries. I also translated the README to English to make it easier for non-German speakers to understand.
-Parts of the writing and coding was done with the help of AI tools.
+Parts of the writing and coding was done with the help of AI tools
 
 ## Key features
 
