@@ -82,8 +82,8 @@ After installation you can add the integration via the Home Assistant UI:
 
 ### Configuration parameters
 
-| Parameter | Beschreibung | Beispiel |
-| --- | --- | --- |
+| Parameter | Description | Example |
+| :--- | :--- | :--- |
 | **CT Mode** | When CT mode is enabled, the power regulation by the Python script is disabled. Only the wallbox logic remains active. If there is enough surplus (> `wallbox_max_surplus`) and a car is present, the controller takes over battery control. Otherwise, control runs via the default Marstek logic. Only enable this parameter if a CT is also configured in the Marstek app. The update interval automatically changes to 10s in CT mode. The power level logic is also active in CT mode. The RS485 parameter controls how many batteries are enabled. | `False` |
 | **Grid connection power sensor ID** | The sensor ID that measures current grid import (+) or export (-) in watts. | `sensor.power_meter_power` |
 | **Power smoothing in seconds** | Time window (seconds) used to compute the average grid power. If set to 0, no smoothing is applied and the latest value is used. | `0` |
