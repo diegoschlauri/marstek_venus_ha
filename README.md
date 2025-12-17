@@ -19,6 +19,8 @@ Parts of the writing and coding was done with the help of AI tools
 * **Configurable limits**: Set upper and lower SoC limits to protect battery lifespan.
 * **Minimum charge/discharge power**: Configurable thresholds that define from which surplus/consumption the batteries start charging/discharging to improve efficiency.
 * **Easy configuration**: Fully configurable via the Home Assistant UI config flow.
+* **PID control**: Optional PID control for precise power regulation.
+* **Service call caching**: Prevents sending the same Home Assistant service call (same entity + same value) too frequently. If set to a value > 0, identical calls are skipped for that many seconds. If set to `0`, identical calls are skipped indefinitely (until the requested value changes).
 
 ---
 
@@ -36,8 +38,6 @@ This integration does not control the batteries directly via a vendor-specific A
 
 During configuration you provide the **base entity name** for each battery (e.g. `marstek_l1`). The integration derives the names of the required entities by expecting the suffixes `_battery_soc`, `_ac_power`, `_modbus_set_forcible_charge_power`, `_modbus_set_forcible_discharge_power`, `_modbus_force_mode`, and `_modbus_rs485_control_mode`.
 
-Enable the Local API port 3000 on the batteries via https://rweijnen.github.io/marstek-venus-monitor/latest/
-
 As a basis for integrating a Marstek energy storage system, the Modbus integration from https://github.com/ViperRNMC/marstek_venus_modbus was used.
 Depending on the use case it may be useful to reduce the scan intervals (in the settings of the Marstek Venus Modbus integration).
 If multiple batteries are used, this can be done either with multiple Modbus adapters and separate IP addresses.
@@ -45,14 +45,14 @@ If multiple batteries are used, this can be done either with multiple Modbus ada
 **Example:**
 If you specify `marstek_l1` as the entity base for the first battery, the integration must be able to find the following entities:
 * `sensor.marstek_l1_battery_soc`
-* `sensor.marstek_l1_ac_power` **(Wichtig für die Wallbox-Logik)**
+* `sensor.marstek_l1_ac_power` **(important for the wallbox logic)**
 * `number.marstek_l1_modbus_set_forcible_charge_power`
 * `number.marstek_l1_modbus_set_forcible_discharge_power`
 * `select.marstek_l1_modbus_force_mode`
 * `switch.marstek_l1_modbus_rs485_control_mode`
 
-
-Make sure these entities exist and are working before setting up the integration.
+Make sure these entities exist and are working before setting up the integration. The configuration flow does not check if the entities exist.
+You need to check the logfile if there are any errors.
 
 ---
 
