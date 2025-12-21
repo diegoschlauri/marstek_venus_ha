@@ -141,15 +141,41 @@ class MarstekCoordinator:
                 is_expired = ttl.total_seconds() > 0 and (now - last_ts) > ttl
 
                 if is_same_value and not is_expired:
+                    # Only skip if the current HA state already matches the desired target.
+                    # This avoids a situation where the previous call was made, but the device
+                    # didn't apply it (or reverted), and we'd otherwise suppress re-sending.
+                    state: State | None = self.hass.states.get(entity_id)
+                    state_matches = False
+                    if state is not None and state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+                        if cache_field == "state":
+                            desired_on = bool(cache_value)
+                            state_matches = (state.state == STATE_ON) == desired_on
+                        elif cache_field == "option":
+                            state_matches = state.state == str(cache_value)
+                        elif cache_field == "value":
+                            try:
+                                state_matches = float(state.state) == float(cache_value)
+                            except (ValueError, TypeError):
+                                state_matches = False
+
+                    if state_matches:
+                        _LOGGER.debug(
+                            "Skipping cached service call %s.%s for %s (%s=%s)",
+                            domain,
+                            service,
+                            entity_id,
+                            cache_field,
+                            cache_value,
+                        )
+                        return
                     _LOGGER.debug(
-                        "Skipping cached service call %s.%s for %s (%s=%s)",
+                        "Cache hit for %s.%s on %s (%s=%s) but current state differs; re-sending",
                         domain,
                         service,
                         entity_id,
                         cache_field,
                         cache_value,
                     )
-                    return
 
         await self.hass.services.async_call(domain, service, service_data, blocking=blocking)
         self._service_call_cache[cache_key] = (cache_value, now)
@@ -418,12 +444,10 @@ class MarstekCoordinator:
             return None
 
         # Get the current power of all batteries
-        total_battery_power = 0
-        total_battery_power = sum(
-                p for p in [
-                    self._get_float_state(f"sensor.{b}_ac_power") for b in self._battery_entities
-                ] if p is not None and p != 0
-            )
+        battery_powers: dict[str, float | None] = {
+            b: self._get_float_state(f"sensor.{b}_ac_power") for b in self._battery_entities
+        }
+        total_battery_power = sum(p for p in battery_powers.values() if p is not None)
         
         # Calculate real power based on batterie power
         if total_battery_power != 0:
@@ -431,6 +455,11 @@ class MarstekCoordinator:
         else:
             real_power = smoothed_grid_power
         
+        _LOGGER.debug(
+            "Battery AC power readings: %s (total=%sW)",
+            battery_powers,
+            round(total_battery_power, 2),
+        )
         _LOGGER.debug(f"Current real power without batteries: {real_power}W")
         return real_power
 

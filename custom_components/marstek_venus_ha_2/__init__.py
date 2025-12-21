@@ -24,8 +24,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    coordinator = hass.data[DOMAIN].pop(entry.entry_id)
-    await coordinator.async_stop_listening()
+    domain_data: dict = hass.data.get(DOMAIN, {})
+    coordinator: MarstekCoordinator | None = domain_data.pop(entry.entry_id, None)
+    if coordinator is not None:
+        await coordinator.async_stop_listening()
     return True
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:

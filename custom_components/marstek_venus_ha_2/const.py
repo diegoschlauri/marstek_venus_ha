@@ -1,6 +1,6 @@
 """Constants for the Marstek Venus HA integration."""
 
-DOMAIN = "marstek_venus_ha"
+DOMAIN = "marstek_venus_ha_2"
 
 # Configuration Keys
 CONF_CT_MODE = "ct_mode"

@@ -1,0 +1,148 @@
+2025-12-21 17:20:10.935 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Setting all batteries to 0W.
+2025-12-21 17:20:10.935 INFO (MainThread) [custom_components.marstek_venus_ha_2.coordinator] CT-Mode disabled. Batteries remain in manual/forcible mode.
+2025-12-21 17:20:10.935 INFO (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Starting coordinator with update interval: 15s
+2025-12-21 17:20:10.936 INFO (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Marstek Venus HA Integration coordinator started.
+2025-12-21 17:20:25.938 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Coordinator update triggered.
+2025-12-21 17:20:25.939 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Current real power without batteries: 437.0W
+2025-12-21 17:20:25.939 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power state: 0
+2025-12-21 17:20:25.939 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power interpreted as: 0.0W
+2025-12-21 17:20:25.939 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] No wallbox pause active. Checking if conditions to start pause are met.
+2025-12-21 17:20:25.939 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] New battery priority: [{'id': 'marstek_venus_d685', 'soc': 76.0}]
+2025-12-21 17:20:25.939 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Hysteresis check: num_available=1, num_currently_active=0, abs_power=262W
+2025-12-21 17:20:25.939 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Determined target number of batteries: 1 (Available: 1, Currently Active: 0)
+2025-12-21 17:20:25.940 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Distributing 262W to 1 batteries: ['marstek_venus_d685'] with 262W each.
+2025-12-21 17:20:25.940 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Skipping cached service call switch.turn_on for switch.marstek_venus_d685_modbus_rs485_control_mode (state=True)
+2025-12-21 17:20:40.939 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Coordinator update triggered.
+2025-12-21 17:20:40.940 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Current real power without batteries: 437.0W
+2025-12-21 17:20:40.940 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power state: 0
+2025-12-21 17:20:40.940 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power interpreted as: 0.0W
+2025-12-21 17:20:40.940 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] No wallbox pause active. Checking if conditions to start pause are met.
+2025-12-21 17:20:40.940 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] New battery priority: [{'id': 'marstek_venus_d685', 'soc': 76.0}]
+2025-12-21 17:20:40.940 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Hysteresis check: num_available=1, num_currently_active=1, abs_power=393W
+2025-12-21 17:20:40.940 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Determined target number of batteries: 1 (Available: 1, Currently Active: 1)
+2025-12-21 17:20:40.941 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Distributing 393W to 1 batteries: ['marstek_venus_d685'] with 393W each.
+2025-12-21 17:20:41.221 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Skipping cached service call select.select_option for select.marstek_venus_d685_modbus_force_mode (option=discharge)
+2025-12-21 17:20:55.941 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Coordinator update triggered.
+2025-12-21 17:20:55.941 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Current real power without batteries: 452.0W
+2025-12-21 17:20:55.941 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power state: 0
+2025-12-21 17:20:55.941 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power interpreted as: 0.0W
+2025-12-21 17:20:55.941 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] No wallbox pause active. Checking if conditions to start pause are met.
+2025-12-21 17:20:55.941 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] New battery priority: [{'id': 'marstek_venus_d685', 'soc': 76.0}]
+2025-12-21 17:20:55.941 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Hysteresis check: num_available=1, num_currently_active=1, abs_power=538W
+2025-12-21 17:20:55.942 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Determined target number of batteries: 1 (Available: 1, Currently Active: 1)
+2025-12-21 17:20:55.942 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Distributing 538W to 1 batteries: ['marstek_venus_d685'] with 538W each.
+2025-12-21 17:20:55.942 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Skipping cached service call switch.turn_on for switch.marstek_venus_d685_modbus_rs485_control_mode (state=True)
+2025-12-21 17:21:10.943 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Coordinator update triggered.
+2025-12-21 17:21:10.943 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Current real power without batteries: 450.0W
+2025-12-21 17:21:10.943 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power state: 0
+2025-12-21 17:21:10.943 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power interpreted as: 0.0W
+2025-12-21 17:21:10.943 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] No wallbox pause active. Checking if conditions to start pause are met.
+2025-12-21 17:21:10.943 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] New battery priority: [{'id': 'marstek_venus_d685', 'soc': 76.0}]
+2025-12-21 17:21:10.944 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Hysteresis check: num_available=1, num_currently_active=1, abs_power=672W
+2025-12-21 17:21:10.944 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Determined target number of batteries: 1 (Available: 1, Currently Active: 1)
+2025-12-21 17:21:10.944 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Distributing 672W to 1 batteries: ['marstek_venus_d685'] with 672W each.
+2025-12-21 17:21:11.224 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Skipping cached service call select.select_option for select.marstek_venus_d685_modbus_force_mode (option=discharge)
+2025-12-21 17:21:25.944 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Coordinator update triggered.
+2025-12-21 17:21:25.945 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Current real power without batteries: 450.0W
+2025-12-21 17:21:25.945 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power state: 0
+2025-12-21 17:21:25.945 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power interpreted as: 0.0W
+2025-12-21 17:21:25.945 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] No wallbox pause active. Checking if conditions to start pause are met.
+2025-12-21 17:21:25.945 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] New battery priority: [{'id': 'marstek_venus_d685', 'soc': 76.0}]
+2025-12-21 17:21:25.945 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Hysteresis check: num_available=1, num_currently_active=1, abs_power=807W
+2025-12-21 17:21:25.945 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Determined target number of batteries: 1 (Available: 1, Currently Active: 1)
+2025-12-21 17:21:25.945 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Distributing 807W to 1 batteries: ['marstek_venus_d685'] with 807W each.
+2025-12-21 17:21:25.945 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Skipping cached service call switch.turn_on for switch.marstek_venus_d685_modbus_rs485_control_mode (state=True)
+2025-12-21 17:21:40.946 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Coordinator update triggered.
+2025-12-21 17:21:40.946 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Current real power without batteries: 437.0W
+2025-12-21 17:21:40.946 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power state: 0
+2025-12-21 17:21:40.946 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power interpreted as: 0.0W
+2025-12-21 17:21:40.946 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] No wallbox pause active. Checking if conditions to start pause are met.
+2025-12-21 17:21:40.947 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] New battery priority: [{'id': 'marstek_venus_d685', 'soc': 76.0}]
+2025-12-21 17:21:40.947 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Hysteresis check: num_available=1, num_currently_active=1, abs_power=930W
+2025-12-21 17:21:40.947 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Determined target number of batteries: 1 (Available: 1, Currently Active: 1)
+2025-12-21 17:21:40.947 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Distributing 930W to 1 batteries: ['marstek_venus_d685'] with 930W each.
+2025-12-21 17:21:41.228 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Skipping cached service call select.select_option for select.marstek_venus_d685_modbus_force_mode (option=discharge)
+2025-12-21 17:21:55.947 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Coordinator update triggered.
+2025-12-21 17:21:55.947 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Current real power without batteries: 434.0W
+2025-12-21 17:21:55.947 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power state: 0
+2025-12-21 17:21:55.947 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power interpreted as: 0.0W
+2025-12-21 17:21:55.948 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] No wallbox pause active. Checking if conditions to start pause are met.
+2025-12-21 17:21:55.948 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] New battery priority: [{'id': 'marstek_venus_d685', 'soc': 76.0}]
+2025-12-21 17:21:55.948 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Hysteresis check: num_available=1, num_currently_active=1, abs_power=1058W
+2025-12-21 17:21:55.948 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Determined target number of batteries: 1 (Available: 1, Currently Active: 1)
+2025-12-21 17:21:55.948 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Distributing 1058W to 1 batteries: ['marstek_venus_d685'] with 1058W each.
+2025-12-21 17:21:55.948 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Skipping cached service call switch.turn_on for switch.marstek_venus_d685_modbus_rs485_control_mode (state=True)
+2025-12-21 17:22:10.948 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Coordinator update triggered.
+2025-12-21 17:22:10.948 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Current real power without batteries: 436.0W
+2025-12-21 17:22:10.948 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power state: 0
+2025-12-21 17:22:10.948 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power interpreted as: 0.0W
+2025-12-21 17:22:10.948 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] No wallbox pause active. Checking if conditions to start pause are met.
+2025-12-21 17:22:10.949 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] New battery priority: [{'id': 'marstek_venus_d685', 'soc': 76.0}]
+2025-12-21 17:22:10.949 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Hysteresis check: num_available=1, num_currently_active=1, abs_power=1190W
+2025-12-21 17:22:10.949 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Determined target number of batteries: 1 (Available: 1, Currently Active: 1)
+2025-12-21 17:22:10.949 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Distributing 1190W to 1 batteries: ['marstek_venus_d685'] with 1190W each.
+2025-12-21 17:22:11.229 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Skipping cached service call select.select_option for select.marstek_venus_d685_modbus_force_mode (option=discharge)
+2025-12-21 17:22:25.949 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Coordinator update triggered.
+2025-12-21 17:22:25.949 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Current real power without batteries: 399.0W
+2025-12-21 17:22:25.949 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power state: 0
+2025-12-21 17:22:25.949 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power interpreted as: 0.0W
+2025-12-21 17:22:25.949 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] No wallbox pause active. Checking if conditions to start pause are met.
+2025-12-21 17:22:25.949 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] New battery priority: [{'id': 'marstek_venus_d685', 'soc': 76.0}]
+2025-12-21 17:22:25.949 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Hysteresis check: num_available=1, num_currently_active=1, abs_power=1288W
+2025-12-21 17:22:25.950 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Determined target number of batteries: 1 (Available: 1, Currently Active: 1)
+2025-12-21 17:22:25.950 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Distributing 1288W to 1 batteries: ['marstek_venus_d685'] with 1288W each.
+2025-12-21 17:22:25.950 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Skipping cached service call switch.turn_on for switch.marstek_venus_d685_modbus_rs485_control_mode (state=True)
+2025-12-21 17:22:40.950 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Coordinator update triggered.
+2025-12-21 17:22:40.950 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Current real power without batteries: 437.0W
+2025-12-21 17:22:40.951 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power state: 0
+2025-12-21 17:22:40.951 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power interpreted as: 0.0W
+2025-12-21 17:22:40.951 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] No wallbox pause active. Checking if conditions to start pause are met.
+2025-12-21 17:22:40.951 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] New battery priority: [{'id': 'marstek_venus_d685', 'soc': 76.0}]
+2025-12-21 17:22:40.951 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Hysteresis check: num_available=1, num_currently_active=1, abs_power=1442W
+2025-12-21 17:22:40.951 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Determined target number of batteries: 1 (Available: 1, Currently Active: 1)
+2025-12-21 17:22:40.951 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Distributing 1442W to 1 batteries: ['marstek_venus_d685'] with 1442W each.
+2025-12-21 17:22:41.231 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Skipping cached service call select.select_option for select.marstek_venus_d685_modbus_force_mode (option=discharge)
+2025-12-21 17:22:55.952 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Coordinator update triggered.
+2025-12-21 17:22:55.952 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Current real power without batteries: 437.0W
+2025-12-21 17:22:55.952 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power state: 0
+2025-12-21 17:22:55.952 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Wallbox power interpreted as: 0.0W
+2025-12-21 17:22:55.952 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] No wallbox pause active. Checking if conditions to start pause are met.
+2025-12-21 17:22:55.952 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] New battery priority: [{'id': 'marstek_venus_d685', 'soc': 76.0}]
+2025-12-21 17:22:55.953 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Hysteresis check: num_available=1, num_currently_active=1, abs_power=1573W
+2025-12-21 17:22:55.953 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Determined target number of batteries: 1 (Available: 1, Currently Active: 1)
+2025-12-21 17:22:55.953 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Distributing 1573W to 1 batteries: ['marstek_venus_d685'] with 1573W each.
+2025-12-21 17:22:55.953 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Skipping cached service call switch.turn_on for switch.marstek_venus_d685_modbus_rs485_control_mode (state=True)
+2025-12-21 17:22:56.093 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Skipping cached service call select.select_option for select.marstek_venus_d685_modbus_force_mode (option=discharge)
+2025-12-21 17:23:02.180 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Setting all batteries to 0W.
+2025-12-21 17:23:02.181 DEBUG (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Skipping cached service call switch.turn_on for switch.marstek_venus_d685_modbus_rs485_control_mode (state=True)
+2025-12-21 17:23:02.702 INFO (MainThread) [custom_components.marstek_venus_ha_2.coordinator] Marstek Venus HA Integration coordinator stopped.
+2025-12-21 17:23:19.894 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Setting all batteries to 0W.
+2025-12-21 17:23:19.894 INFO (MainThread) [custom_components.marstek_venus_ha.coordinator] CT-Mode disabled. Batteries remain in manual/forcible mode.
+2025-12-21 17:23:19.894 INFO (MainThread) [custom_components.marstek_venus_ha.coordinator] Starting coordinator with update interval: 15s
+2025-12-21 17:23:19.894 INFO (MainThread) [custom_components.marstek_venus_ha.coordinator] Marstek Venus HA Integration coordinator started.
+2025-12-21 17:23:34.895 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Coordinator update triggered.
+2025-12-21 17:23:34.896 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Current real power without batteries: 437.0W
+2025-12-21 17:23:34.896 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Wallbox power state: 0
+2025-12-21 17:23:34.896 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Wallbox power interpreted as: 0.0W
+2025-12-21 17:23:34.896 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] No wallbox pause active. Checking if conditions to start pause are met.
+2025-12-21 17:23:34.896 INFO (MainThread) [custom_components.marstek_venus_ha.coordinator] Recalculating battery priority. Reason: Power direction changed
+2025-12-21 17:23:34.896 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] New battery priority: [{'id': 'marstek_venus_d685', 'soc': 76.0}]
+2025-12-21 17:23:34.896 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Hysteresis check: num_available=1, num_currently_active=0, abs_power=437W
+2025-12-21 17:23:34.896 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Determined target number of batteries: 1 (Available: 1, Currently Active: 0)
+2025-12-21 17:23:34.896 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Distributing 437W to 1 batteries: ['marstek_venus_d685'] with 437W each.
+2025-12-21 17:23:49.896 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Coordinator update triggered.
+2025-12-21 17:23:49.897 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Current real power without batteries: 436.0W
+2025-12-21 17:23:49.897 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Wallbox power state: 0
+2025-12-21 17:23:49.897 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Wallbox power interpreted as: 0.0W
+2025-12-21 17:23:49.897 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] No wallbox pause active. Checking if conditions to start pause are met.
+2025-12-21 17:23:49.897 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Hysteresis check: num_available=1, num_currently_active=1, abs_power=436W
+2025-12-21 17:23:49.897 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Determined target number of batteries: 1 (Available: 1, Currently Active: 1)
+2025-12-21 17:23:49.897 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Distributing 436W to 1 batteries: ['marstek_venus_d685'] with 436W each.
+2025-12-21 17:24:04.898 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Coordinator update triggered.
+2025-12-21 17:24:04.898 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Current real power without batteries: 435.0W
+2025-12-21 17:24:04.898 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Wallbox power state: 0
+2025-12-21 17:24:04.898 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Wallbox power interpreted as: 0.0W
+2025-12-21 17:24:04.898 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] No wallbox pause active. Checking if conditions to start pause are met.
+2025-12-21 17:24:04.899 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Hysteresis check: num_available=1, num_currently_active=1, abs_power=435W
+2025-12-21 17:24:04.899 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Determined target number of batteries: 1 (Available: 1, Currently Active: 1)
+2025-12-21 17:24:04.899 DEBUG (MainThread) [custom_components.marstek_venus_ha.coordinator] Distributing 435W to 1 batteries: ['marstek_venus_d685'] with 435W each.
