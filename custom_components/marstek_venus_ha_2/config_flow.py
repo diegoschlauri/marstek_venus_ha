@@ -105,7 +105,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_batteries(self, user_input=None):
         """Battery configuration step."""
         errors = {}
-        placeholders: dict[str, str] = {}
+        placeholders: dict[str, str] = {"missing": ""}
         if user_input is not None:
             missing = self._validate_battery_entities(user_input)
             if missing:
@@ -336,7 +336,7 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_batteries(self, user_input=None):
         """Battery configuration step."""
         errors: dict = {}
-        placeholders: dict[str, str] = {}
+        placeholders: dict[str, str] = {"missing": ""}
         if user_input is not None:
             missing = self._validate_battery_entities(user_input)
             if missing:
