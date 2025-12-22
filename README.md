@@ -63,12 +63,12 @@ You need to check the logfile if there are any errors.
 ### Via HACS (recommended)
 
 1.  Add this GitHub repository to HACS as a "Custom repository".
-2.  Search for "Intelligent Battery Control" and install the integration.
+2.  Search for "Marstek Venus HA" and install the integration.
 3.  Restart Home Assistant.
 
 ### Manual installation
 
-1.  Download the folder `custom_components/marstek_intelligent_battery` from this repository.
+1.  Download the folder `custom_components/marstek_venus_ha_2` from this repository.
 2.  Copy it into the `custom_components` directory of your Home Assistant installation.
 3.  Restart Home Assistant.
 
@@ -79,7 +79,7 @@ You need to check the logfile if there are any errors.
 After installation you can add the integration via the Home Assistant UI:
 
 1.  Go to **Settings > Devices & Services**.
-2.  Click **Add integration** and search for "Marstek Intelligent Battery Control".
+2.  Click **Add integration** and search for "Marstek Venus HA".
 3.  Follow the configuration dialog. Fields for the wallbox or for batteries 2 and 3 can be left empty to disable the corresponding functionality.
 
 ### Configuration parameters
