@@ -16,6 +16,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
+    if not hass.services.has_service(DOMAIN, "trigger_update"):
+        async def _handle_trigger_update(call):
+            entry_id = call.data.get("entry_id")
+            if entry_id:
+                c: MarstekCoordinator | None = hass.data.get(DOMAIN, {}).get(entry_id)
+                if c is not None:
+                    await c.async_request_update(reason="service")
+                return
+            for c in hass.data.get(DOMAIN, {}).values():
+                await c.async_request_update(reason="service")
+
+        hass.services.async_register(DOMAIN, "trigger_update", _handle_trigger_update)
+
     # Reload entry when options are updated
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 

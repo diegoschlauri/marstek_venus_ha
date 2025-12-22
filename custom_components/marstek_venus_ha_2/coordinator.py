@@ -8,7 +8,7 @@ from enum import IntEnum
 
 from homeassistant.core import HomeAssistant, State
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers.event import async_track_time_interval, async_track_state_change_event
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN, STATE_ON
 
 from .const import (
@@ -89,7 +89,11 @@ class MarstekCoordinator:
         self._pid_prev_ts: datetime | None = None
 
         self._is_running = False
-        self._unsub_listener = None
+        self._unsub_listeners: list[Any] = []
+
+        self._update_task: asyncio.Task | None = None
+        self._update_lock = asyncio.Lock()
+        self._last_update_start: datetime | None = None
 
         # State variables
         self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
@@ -252,20 +256,87 @@ class MarstekCoordinator:
                 _LOGGER.info("CT-Mode disabled. Batteries remain in manual/forcible mode.")
 
             coordinator_update_interval = self._get_effective_update_interval()
-            _LOGGER.info(f"Starting coordinator with update interval: {coordinator_update_interval}s")
-            self._unsub_listener = async_track_time_interval(
-                self.hass,
-                self._async_update,
-                timedelta(seconds=coordinator_update_interval),
+            _LOGGER.info(
+                "Starting coordinator in event-driven mode on sensor updates (min interval: %ss)",
+                coordinator_update_interval,
             )
+
+            # Subscribe to relevant sensor updates (grid power, PV power, wallbox cable).
+            trigger_entities: list[str] = []
+
+            grid_power_sensor = self.config.get(CONF_GRID_POWER_SENSOR)
+            if grid_power_sensor:
+                trigger_entities.append(grid_power_sensor)
+
+            pv_power_sensor = self.config.get(CONF_PV_POWER_SENSOR)
+            if pv_power_sensor:
+                trigger_entities.append(pv_power_sensor)
+
+            wb_cable_sensor = self.config.get(CONF_WALLBOX_CABLE_SENSOR)
+            if wb_cable_sensor:
+                trigger_entities.append(wb_cable_sensor)
+
+            def _on_state_change(event):
+                entity_id = event.data.get("entity_id")
+                self.hass.async_create_task(self.async_request_update(reason=f"state_change:{entity_id}"))
+
+            if trigger_entities:
+                remove = async_track_state_change_event(self.hass, trigger_entities, _on_state_change)
+                self._unsub_listeners.append(remove)
+
+            # Run one initial update after startup.
+            self.hass.async_create_task(self.async_request_update(reason="startup"))
+
             self._is_running = True
             _LOGGER.info("Marstek Venus HA Integration coordinator started.")
 
+    async def async_request_update(self, *, reason: str = "manual") -> None:
+        """Request a coordinator update.
+
+        This is safe to call from automations/services or state-change listeners.
+        It enforces a minimum interval between updates and prevents concurrent runs.
+        """
+        if not self._is_running:
+            return
+
+        min_interval = float(self._get_effective_update_interval())
+
+        async with self._update_lock:
+            now = datetime.now()
+            if self._last_update_start is not None:
+                elapsed = (now - self._last_update_start).total_seconds()
+                if elapsed < min_interval:
+                    delay = min_interval - elapsed
+                    if self._update_task is not None and not self._update_task.done():
+                        return
+                    self._update_task = self.hass.async_create_task(self._delayed_update(delay, reason))
+                    return
+
+            if self._update_task is not None and not self._update_task.done():
+                return
+            self._update_task = self.hass.async_create_task(self._run_update(reason))
+
+    async def _delayed_update(self, delay: float, reason: str) -> None:
+        await asyncio.sleep(max(0.0, delay))
+        await self._run_update(reason)
+
+    async def _run_update(self, reason: str) -> None:
+        self._last_update_start = datetime.now()
+        _LOGGER.debug("Coordinator update triggered (%s).", reason)
+        await self._async_update()
+
     async def async_stop_listening(self):
         """Stop the coordinator's update loop."""
-        if self._unsub_listener:
-            self._unsub_listener()
-            self._unsub_listener = None
+        for unsub in self._unsub_listeners:
+            try:
+                unsub()
+            except Exception:
+                pass
+        self._unsub_listeners.clear()
+
+        if self._update_task is not None and not self._update_task.done():
+            self._update_task.cancel()
+        self._update_task = None
         self._is_running = False
         await self._set_all_batteries_to_zero()
         _LOGGER.info("Marstek Venus HA Integration coordinator stopped.")
@@ -282,7 +353,7 @@ class MarstekCoordinator:
 
     async def _async_update(self, now=None):
         """Fetch new data and run the logic."""
-        _LOGGER.debug("Coordinator update triggered.")
+        # Note: logging is handled by _run_update to include a reason.
 
         # Net grid power (import/export). This is the signal PID should drive towards 0W.
         smoothed_grid_power = self._get_smoothed_grid_power()
