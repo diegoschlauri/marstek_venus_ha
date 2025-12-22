@@ -53,8 +53,8 @@ If you specify `marstek_l1` as the entity base for the first battery, the integr
 * `select.marstek_l1_modbus_force_mode`
 * `switch.marstek_l1_modbus_rs485_control_mode`
 
-Make sure these entities exist and are working before setting up the integration. The configuration flow does not check if the entities exist.
-You need to check the logfile if there are any errors.
+Make sure these entities exist and are working before setting up the integration. The configuration flow does check if the entities exist and
+you cannot proceed if they are missing. 
 
 ---
 
