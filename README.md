@@ -21,6 +21,8 @@ Parts of the writing and coding was done with the help of AI tools
 * **Easy configuration**: Fully configurable via the Home Assistant UI config flow.
 * **PID control**: Optional PID control for precise power regulation.
 * **Service call caching**: Prevents sending the same Home Assistant service call (same entity + same value) too frequently. If set to a value > 0, identical calls are skipped for that many seconds. If set to `0`, identical calls are skipped indefinitely (until the requested value changes).
+* **Event-driven control loop**: The coordinator runs on relevant sensor updates (instead of a fixed polling loop) and is throttled by a configurable minimum interval.
+* **PV-based charge limiting (optional)**: An optional PV power sensor can be configured to cap commanded charging power to current PV production to avoid charging from the grid due to short sensor glitches.
 
 ---
 
@@ -86,6 +88,7 @@ After installation you can add the integration via the Home Assistant UI:
 | :--- | :--- | :--- |
 | **CT Mode** | When CT mode is enabled, the power regulation by the Python script is disabled. Only the wallbox logic remains active. If there is enough surplus (> `wallbox_max_surplus`) and a car is present, the controller takes over battery control. Otherwise, control runs via the default Marstek logic. Only enable this parameter if a CT is also configured in the Marstek app. The update interval automatically changes to 10s in CT mode. The power level logic is also active in CT mode. The RS485 parameter controls how many batteries are enabled. | `False` |
 | **Grid connection power sensor ID** | The sensor ID that measures current grid import (+) or export (-) in watts. | `sensor.power_meter_power` |
+| **PV power sensor ID (optional)** | The sensor ID that measures current PV production power in watts (or kW). If configured, battery charging power is capped to this value to avoid charging from the grid when grid power briefly appears negative. | `sensor.pv_power` |
 | **Power smoothing in seconds** | Time window (seconds) used to compute the average grid power. If set to 0, no smoothing is applied and the latest value is used. | `0` |
 | **Minimum surplus** | Minimum power surplus in watts required to start charging. | `200` |
 | **Minimum import** | Minimum consumption in watts required to start discharging. | `200` |
@@ -109,7 +112,7 @@ After installation you can add the integration via the Home Assistant UI:
 | **Wallbox update time for enabling battery charging in seconds (optional)**| Number of seconds until batteries are released for charging again if the power fluctuation threshold is not exceeded. | `300` |
 | **Wallbox start time in seconds (optional)**| Number of seconds to wait before releasing the batteries again. This is used when a car is plugged in but does not start charging. This value is also relevant for phase switching of the wallbox. | `120` |
 | **Wallbox retry in minutes (optional)**| If a wallbox session ends and the cable remains plugged in, after this number of minutes and with sufficient surplus (> wallbox surplus parameter), the batteries are paused for the wallbox start time to allow charging. | `60` |
-| **Coordinator update interval**| Number of seconds between executions of the logic update cycle. | `3` |
+| **Coordinator update interval**| Minimum number of seconds between executions of the logic update cycle (throttle). The logic is triggered by sensor updates (event-driven). | `3` |
 | **Service call cache time (seconds)** | Prevents sending the same Home Assistant service call (same entity + same value) too frequently. If set to a value > 0, identical calls are skipped for that many seconds. If set to `0`, identical calls are skipped indefinitely (until the requested value changes). | `30` |
 | **PID control enabled** | Enables PID-based power control (only active when **CT Mode** is `False`). When enabled, the integration continuously adjusts battery charge/discharge power to drive the *real grid power* towards `0W` (minimizing import/export). | `False` |
 | **PID Kp** | Proportional gain. Higher values react stronger to the current error (difference to the target of `0W`). Too high can cause oscillation. | `0.6` |
@@ -137,6 +140,26 @@ Practical tuning guidance:
 * Increase `Kp` until the response is fast but not oscillating.
 * Add a small `Ki` to reduce residual import/export (steady-state error).
 * If you see oscillations, reduce `Kp` and/or `Ki`, or consider adding a small `Kd`.
+
+## Event-driven update loop and manual trigger service
+
+The coordinator update loop is **event-driven** (triggered by sensor updates). The configured **Coordinator update interval** acts as a **minimum interval / throttle**.
+
+Additionally, the integration registers a Home Assistant service to manually trigger an update cycle:
+
+* `marstek_venus_ha_2.trigger_update`
+
+Example automation:
+
+```yaml
+alias: Marstek - Trigger coordinator update
+mode: single
+trigger:
+  - platform: state
+    entity_id: sensor.power_meter_power
+action:
+  - service: marstek_venus_ha_2.trigger_update
+```
 
 ## How it works (in detail)
 
