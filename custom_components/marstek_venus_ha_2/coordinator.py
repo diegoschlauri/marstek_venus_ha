@@ -4,6 +4,7 @@ from collections import deque
 from datetime import datetime, timedelta
 import asyncio
 from typing import Any
+from enum import IntEnum
 
 from homeassistant.core import HomeAssistant, State
 from homeassistant.config_entries import ConfigEntry
@@ -32,6 +33,7 @@ from .const import (
     CONF_WALLBOX_POWER_SENSOR,
     CONF_WALLBOX_MAX_SURPLUS,
     CONF_WALLBOX_CABLE_SENSOR,
+    CONF_PV_POWER_SENSOR,
     CONF_WALLBOX_POWER_STABILITY_THRESHOLD,
     CONF_WALLBOX_RESUME_CHECK_SECONDS,
     CONF_WALLBOX_START_DELAY_SECONDS,
@@ -50,6 +52,13 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+BELOW_MIN_CYCLES_TO_ZERO = 10
+
+class PowerDir(IntEnum):
+    NEUTRAL = 0
+    CHARGE = 1
+    DISCHARGE = -1
 
 class MarstekCoordinator:
     """The main coordinator for handling battery logic."""
@@ -86,7 +95,7 @@ class MarstekCoordinator:
         self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
         self._battery_priority = []
         self._last_priority_update = datetime.min
-        self._last_power_direction = 0  # 1 for charging, -1 for discharging, 0 for neutral
+        self._last_power_direction: PowerDir = PowerDir.NEUTRAL
         
         # Wallbox state
         self._wallbox_charge_paused = False
@@ -98,6 +107,10 @@ class MarstekCoordinator:
         # CT-Mode state
         self._ct_mode = self.config.get(CONF_CT_MODE, False)
         self._wallbox_is_active = False  # Track if wallbox currently controls
+
+        # Counters for minimum threshold gating in _distribute_power
+        self._below_min_charge_count = 0
+        self._below_min_discharge_count = 0
 
         # Collect battery entities
         self._battery_entities = [
@@ -141,41 +154,15 @@ class MarstekCoordinator:
                 is_expired = ttl.total_seconds() > 0 and (now - last_ts) > ttl
 
                 if is_same_value and not is_expired:
-                    # Only skip if the current HA state already matches the desired target.
-                    # This avoids a situation where the previous call was made, but the device
-                    # didn't apply it (or reverted), and we'd otherwise suppress re-sending.
-                    state: State | None = self.hass.states.get(entity_id)
-                    state_matches = False
-                    if state is not None and state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN):
-                        if cache_field == "state":
-                            desired_on = bool(cache_value)
-                            state_matches = (state.state == STATE_ON) == desired_on
-                        elif cache_field == "option":
-                            state_matches = state.state == str(cache_value)
-                        elif cache_field == "value":
-                            try:
-                                state_matches = float(state.state) == float(cache_value)
-                            except (ValueError, TypeError):
-                                state_matches = False
-
-                    if state_matches:
-                        _LOGGER.debug(
-                            "Skipping cached service call %s.%s for %s (%s=%s)",
-                            domain,
-                            service,
-                            entity_id,
-                            cache_field,
-                            cache_value,
-                        )
-                        return
                     _LOGGER.debug(
-                        "Cache hit for %s.%s on %s (%s=%s) but current state differs; re-sending",
+                        "Skipping cached service call %s.%s for %s (%s=%s)",
                         domain,
                         service,
                         entity_id,
                         cache_field,
                         cache_value,
                     )
+                    return
 
         await self.hass.services.async_call(domain, service, service_data, blocking=blocking)
         self._service_call_cache[cache_key] = (cache_value, now)
@@ -243,6 +230,11 @@ class MarstekCoordinator:
 
             
         if not self._is_running:
+            self._service_call_cache.clear()
+            _LOGGER.debug("Running version 1.1.6")
+            _LOGGER.debug("Service call cache cleared on coordinator start")
+            self._below_min_charge_count = 0
+            self._below_min_discharge_count = 0
             # Re-initialize deques on start
             self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
             self._wallbox_power_history = deque(maxlen=self._get_deque_size("wallbox"))
@@ -292,6 +284,13 @@ class MarstekCoordinator:
         """Fetch new data and run the logic."""
         _LOGGER.debug("Coordinator update triggered.")
 
+        # Net grid power (import/export). This is the signal PID should drive towards 0W.
+        smoothed_grid_power = self._get_smoothed_grid_power()
+        if smoothed_grid_power is None:
+            _LOGGER.warning("Could not determine grid power. Skipping update cycle.")
+            return
+
+        # House load excluding batteries (used by the staging/hysteresis logic)
         real_power = self._get_real_power()
         if real_power is None:
             _LOGGER.warning("Could not determine real power. Skipping update cycle.")
@@ -307,7 +306,8 @@ class MarstekCoordinator:
             return
 
         if not self._ct_mode and self._pid_enabled:
-            await self._pid_control_step(real_power)
+            _LOGGER.debug("PID input grid power: %sW (target=0W)", round(smoothed_grid_power, 2))
+            await self._pid_control_step(smoothed_grid_power)
             return
 
         # Get battery priority
@@ -337,7 +337,7 @@ class MarstekCoordinator:
             await self._set_all_batteries_to_zero()
             return
 
-        direction = 1 if output > 0 else -1
+        direction = PowerDir.CHARGE if output > 0 else PowerDir.DISCHARGE
         requested_abs_power = int(round(abs(output)))
 
         # Ensure staging logic uses the intended direction
@@ -353,7 +353,7 @@ class MarstekCoordinator:
         # Clamp to configured max power before distributing
         max_discharge_power = int(self.config.get(CONF_MAX_DISCHARGE_POWER, 2500))
         max_charge_power = int(self.config.get(CONF_MAX_CHARGE_POWER, 2500))
-        max_total = max_charge_power if direction == 1 else max_discharge_power
+        max_total = max_charge_power if direction == PowerDir.CHARGE else max_discharge_power
 
         requested_abs_power = min(requested_abs_power, max_total * max(1, number_of_batteries))
 
@@ -435,6 +435,24 @@ class MarstekCoordinator:
         _LOGGER.debug(f"Current grid power: {current_power}W, Smoothed grid power: {avg_power:.2f}W")
         return avg_power
 
+    def _get_pv_power(self) -> float | None:
+        pv_sensor_id = self.config.get(CONF_PV_POWER_SENSOR)
+        if not pv_sensor_id:
+            return None
+        pv_state = self._get_entity_state(pv_sensor_id)
+        if pv_state is None:
+            return None
+        try:
+            pv_power = float(pv_state.state)
+        except (ValueError, TypeError):
+            _LOGGER.warning(f"Could not parse state of '{pv_sensor_id}' as float: '{pv_state.state}'")
+            return None
+
+        unit = pv_state.attributes.get("unit_of_measurement")
+        if unit and unit.lower() == "kw":
+            pv_power *= 1000
+        return pv_power
+
     def _get_real_power(self) -> float | None:
         """Get the real power of the house excluding the batteries. A positiv value means the house uses more power than it produced excluding the batteries. 
         A negative value means the house produces more power than its acutally used excluding the batteries."""
@@ -513,7 +531,7 @@ class MarstekCoordinator:
         self._wallbox_power_history.append(wb_power)
 
         # 1. Höchste Priorität: Entladeschutz, wenn Wallbox aktiv ist
-        if wb_power > 100 and self._last_power_direction == -1:
+        if wb_power > 100 and self._last_power_direction == PowerDir.DISCHARGE:
             _LOGGER.debug("Wallbox is active, ensuring batteries do not discharge.")
             await self._set_all_batteries_to_zero()
             return True
@@ -670,9 +688,9 @@ class MarstekCoordinator:
             else:
                 _LOGGER.debug(f"Priority update triggered but rate-limited. Will retry in {(min_update_interval - time_since_last_update).total_seconds():.0f}s")
 
-    async def _calculate_battery_priority(self, power_direction: int):
+    async def _calculate_battery_priority(self, power_direction: PowerDir):
         """Calculate the sorted list of batteries based on SoC."""
-        if power_direction == 0:
+        if power_direction == PowerDir.NEUTRAL:
             self._battery_priority = []
             return
 
@@ -685,19 +703,19 @@ class MarstekCoordinator:
             if soc is None:
                 continue
 
-            if power_direction == 1 and soc < max_soc:
+            if power_direction == PowerDir.CHARGE and soc < max_soc:
                 available_batteries.append({"id": base_entity_id, "soc": soc})
-            elif power_direction == -1 and soc > min_soc:
+            elif power_direction == PowerDir.DISCHARGE and soc > min_soc:
                 available_batteries.append({"id": base_entity_id, "soc": soc})
 
-        is_reverse = (power_direction == -1)
+        is_reverse = (power_direction == PowerDir.DISCHARGE)
         self._battery_priority = sorted(available_batteries, key=lambda x: x['soc'], reverse=is_reverse)
         _LOGGER.debug(f"New battery priority: {self._battery_priority}")
 
     def _get_desired_number_of_batteries(self, power: float) -> int:
         abs_power = abs(power)
         stage_offset = self.config.get(CONF_POWER_STAGE_OFFSET, 50)
-        if self._last_power_direction == -1: #Currently Discharging
+        if self._last_power_direction == PowerDir.DISCHARGE: #Currently Discharging
             stage1 = self.config.get(CONF_POWER_STAGE_DISCHARGE_1)
             stage2 = self.config.get(CONF_POWER_STAGE_DISCHARGE_2)
         else:
@@ -782,19 +800,68 @@ class MarstekCoordinator:
         max_discharge_power = self.config.get(CONF_MAX_DISCHARGE_POWER, 2500)
         max_charge_power = self.config.get(CONF_MAX_CHARGE_POWER, 2500)
 
+        if self._last_power_direction == PowerDir.CHARGE:
+            pv_power = self._get_pv_power()
+            if pv_power is not None:
+                pv_power = max(0.0, pv_power)
+                if abs_power > pv_power:
+                    _LOGGER.debug(
+                        "PV cap active. Requested charge=%sW, PV=%sW -> capping to %sW",
+                        round(abs_power, 0),
+                        round(pv_power, 0),
+                        round(pv_power, 0),
+                    )
+                abs_power = min(abs_power, pv_power)
+
         min_surplus_for_chargin = self.config.get(CONF_MIN_SURPLUS, 50)
         min_consumption_for_discharging = self.config.get(CONF_MIN_CONSUMPTION, 50)
 
         # Check minimum thresholds to activate charging/discharging
-        if self._last_power_direction == 1 and abs_power < min_surplus_for_chargin:
-            _LOGGER.debug(f"Charging power ({abs_power:.0f}W) below minimum surplus threshold ({min_surplus_for_chargin}W). Setting all batteries to 0W.")
-            await self._set_all_batteries_to_zero()
-            return
+        if self._last_power_direction == PowerDir.CHARGE and abs_power < min_surplus_for_chargin:
+            self._below_min_charge_count += 1
+            self._below_min_discharge_count = 0
+            _LOGGER.debug(
+                "Charging power (%sW) below minimum surplus threshold (%sW). below_min_charge_count=%s/%s",
+                round(abs_power, 0),
+                min_surplus_for_chargin,
+                self._below_min_charge_count,
+                BELOW_MIN_CYCLES_TO_ZERO,
+            )
+            if self._below_min_charge_count >= BELOW_MIN_CYCLES_TO_ZERO:
+                _LOGGER.debug(
+                    "Charging power below minimum threshold for %s consecutive cycles. Setting all batteries to 0W.",
+                    BELOW_MIN_CYCLES_TO_ZERO,
+                )
+                self._below_min_charge_count = 0
+                await self._set_all_batteries_to_zero()
+                return
         
-        if self._last_power_direction == -1 and abs_power < min_consumption_for_discharging:
-            _LOGGER.debug(f"Discharging power ({abs_power:.0f}W) below minimum consumption threshold ({min_consumption_for_discharging}W). Setting all batteries to 0W.")
-            await self._set_all_batteries_to_zero()
-            return
+        if self._last_power_direction == PowerDir.DISCHARGE and abs_power < min_consumption_for_discharging:
+            self._below_min_discharge_count += 1
+            self._below_min_charge_count = 0
+            _LOGGER.debug(
+                "Discharging power (%sW) below minimum consumption threshold (%sW). below_min_discharge_count=%s/%s",
+                round(abs_power, 0),
+                min_consumption_for_discharging,
+                self._below_min_discharge_count,
+                BELOW_MIN_CYCLES_TO_ZERO,
+            )
+            if self._below_min_discharge_count >= BELOW_MIN_CYCLES_TO_ZERO:
+                _LOGGER.debug(
+                    "Discharging power below minimum threshold for %s consecutive cycles. Setting all batteries to 0W.",
+                    BELOW_MIN_CYCLES_TO_ZERO,
+                )
+                self._below_min_discharge_count = 0
+                await self._set_all_batteries_to_zero()
+                return
+
+        # Reset counters when above minimum thresholds
+        if (
+            (self._last_power_direction == PowerDir.CHARGE and abs_power >= min_surplus_for_chargin)
+            or (self._last_power_direction == PowerDir.DISCHARGE and abs_power >= min_consumption_for_discharging)
+        ):
+            self._below_min_charge_count = 0
+            self._below_min_discharge_count = 0
 
         # If no batteries should be active, ensure everything is set to 0 and exit.
         if target_num_batteries == 0:
@@ -811,9 +878,9 @@ class MarstekCoordinator:
 
         power_per_battery = round(abs_power / len(active_batteries))
         # Ensure we do not exceed max charge/discharge power
-        if self._last_power_direction == 1: #Charging
+        if self._last_power_direction == PowerDir.CHARGE: #Charging
             power_per_battery = min(power_per_battery, max_charge_power)
-        elif self._last_power_direction == -1: #Discharging
+        elif self._last_power_direction == PowerDir.DISCHARGE: #Discharging
             power_per_battery = min(power_per_battery, max_discharge_power) 
 
         active_battery_ids = [b['id'] for b in active_batteries]

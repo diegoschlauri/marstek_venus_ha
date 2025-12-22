@@ -9,6 +9,7 @@ from .const import (
     DOMAIN,
     CONF_CT_MODE,
     CONF_GRID_POWER_SENSOR,
+    CONF_PV_POWER_SENSOR,
     CONF_SMOOTHING_SECONDS,
     CONF_MIN_SURPLUS,
     CONF_MIN_CONSUMPTION,
@@ -98,6 +99,9 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_POWER_STAGE_CHARGE_2, default=DEFAULT_POWER_STAGE_CHARGE_2): int,
                 vol.Required(CONF_POWER_STAGE_OFFSET, default=DEFAULT_POWER_STAGE_OFFSET): int,
                 vol.Required(CONF_PRIORITY_INTERVAL, default=DEFAULT_PRIORITY_INTERVAL): int,
+                vol.Optional(CONF_PV_POWER_SENSOR, default=""): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                ),
                 vol.Optional(CONF_WALLBOX_POWER_SENSOR, default=""): str,
                 vol.Optional(CONF_WALLBOX_MAX_SURPLUS, default=DEFAULT_WALLBOX_MAX_SURPLUS): int,
                 vol.Optional(CONF_WALLBOX_CABLE_SENSOR, default=""): str,
@@ -245,6 +249,12 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_PRIORITY_INTERVAL, self.config_entry.data.get(CONF_PRIORITY_INTERVAL, DEFAULT_PRIORITY_INTERVAL)
                     ),
                 ): int,
+                vol.Optional(
+                    CONF_PV_POWER_SENSOR,
+                    default=self.config_entry.options.get(
+                        CONF_PV_POWER_SENSOR, self.config_entry.data.get(CONF_PV_POWER_SENSOR, "")
+                    ),
+                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
                 vol.Optional(
                     CONF_WALLBOX_POWER_SENSOR,
                     default=self.config_entry.options.get(
