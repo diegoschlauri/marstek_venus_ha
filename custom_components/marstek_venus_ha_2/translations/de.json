@@ -1,5 +1,8 @@
 {
   "config": {
+    "error": {
+      "missing_battery_entities": "Einige erwartete Batterie-Entities wurden nicht gefunden."
+    },
     "step": {
       "user": {
         "title": "Marstek Venus",
@@ -15,7 +18,7 @@
       },
       "batteries": {
         "title": "Batterien",
-        "description": "Batterien und Leistungsgrenzen konfigurieren.",
+        "description": "Batterien und Leistungsgrenzen konfigurieren.\n\nWenn die Integration die erwarteten Entities für das Batterie-Präfix nicht findet, werden sie hier angezeigt: {missing}",
         "data": {
           "battery_1_entity": "Batterie 1 Gerät/Entity",
           "battery_2_entity": "Batterie 2 Gerät/Entity (optional)",
@@ -60,6 +63,9 @@
     }
   },
   "options": {
+    "error": {
+      "missing_battery_entities": "Einige erwartete Batterie-Entities wurden nicht gefunden."
+    },
     "step": {
       "init": {
         "title": "Marstek Venus Optionen",
@@ -82,7 +88,7 @@
       },
       "batteries": {
         "title": "Batterien",
-        "description": "Batteriekonfiguration und Grenzen aktualisieren.",
+        "description": "Batteriekonfiguration und Grenzen aktualisieren.\n\nFehlende Entities: {missing}",
         "data": {
           "battery_1_entity": "Batterie 1 Gerät/Entity",
           "battery_2_entity": "Batterie 2 Gerät/Entity (optional)",

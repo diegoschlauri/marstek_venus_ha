@@ -1,5 +1,8 @@
 {
   "config": {
+    "error": {
+      "missing_battery_entities": "Some expected battery entities were not found."
+    },
     "step": {
       "user": {
         "title": "Marstek Venus",
@@ -15,7 +18,7 @@
       },
       "batteries": {
         "title": "Batteries",
-        "description": "Configure your batteries and power limits.",
+        "description": "Configure your batteries and power limits.\n\nIf the integration cannot find the expected entities for the battery prefix, it will show them here: {missing}",
         "data": {
           "battery_1_entity": "Battery 1 device/entity",
           "battery_2_entity": "Battery 2 device/entity (optional)",
@@ -60,6 +63,9 @@
     }
   },
   "options": {
+    "error": {
+      "missing_battery_entities": "Some expected battery entities were not found."
+    },
     "step": {
       "init": {
         "title": "Marstek Venus options",
@@ -82,7 +88,7 @@
       },
       "batteries": {
         "title": "Batteries",
-        "description": "Update battery configuration and limits.",
+        "description": "Update battery configuration and limits.\n\nMissing entities: {missing}",
         "data": {
           "battery_1_entity": "Battery 1 device/entity",
           "battery_2_entity": "Battery 2 device/entity (optional)",

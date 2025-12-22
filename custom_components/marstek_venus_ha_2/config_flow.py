@@ -105,9 +105,15 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_batteries(self, user_input=None):
         """Battery configuration step."""
         errors = {}
+        placeholders: dict[str, str] = {}
         if user_input is not None:
-            self._data.update(user_input)
-            return await self.async_step_wallbox()
+            missing = self._validate_battery_entities(user_input)
+            if missing:
+                errors["base"] = "missing_battery_entities"
+                placeholders["missing"] = ", ".join(missing)
+            else:
+                self._data.update(user_input)
+                return await self.async_step_wallbox()
 
         data_schema = vol.Schema(
             {
@@ -145,8 +151,37 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
         return self.async_show_form(
-            step_id="batteries", data_schema=data_schema, errors=errors
+            step_id="batteries",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders=placeholders,
         )
+
+    def _validate_battery_entities(self, user_input: dict) -> list[str]:
+        missing: list[str] = []
+
+        base_ids = [
+            user_input.get(CONF_BATTERY_1_ENTITY),
+            user_input.get(CONF_BATTERY_2_ENTITY),
+            user_input.get(CONF_BATTERY_3_ENTITY),
+        ]
+        base_ids = [b.strip() for b in base_ids if isinstance(b, str) and b.strip()]
+
+        for base in base_ids:
+            expected = [
+                f"sensor.{base}_ac_power",
+                f"sensor.{base}_soc",
+                f"number.{base}_modbus_set_forcible_charge_power",
+                f"number.{base}_modbus_set_forcible_discharge_power",
+                f"select.{base}_modbus_force_mode",
+                f"switch.{base}_modbus_rs485_control_mode",
+            ]
+
+            for ent_id in expected:
+                if self.hass.states.get(ent_id) is None:
+                    missing.append(ent_id)
+
+        return missing
 
     async def async_step_wallbox(self, user_input=None):
         """Wallbox configuration step."""
@@ -300,11 +335,18 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_batteries(self, user_input=None):
         """Battery configuration step."""
+        errors: dict = {}
+        placeholders: dict[str, str] = {}
         if user_input is not None:
-            self._options.update(user_input)
-            if self._all_mode:
-                return await self.async_step_wallbox()
-            return self.async_create_entry(title="", data=self._options)
+            missing = self._validate_battery_entities(user_input)
+            if missing:
+                errors["base"] = "missing_battery_entities"
+                placeholders["missing"] = ", ".join(missing)
+            else:
+                self._options.update(user_input)
+                if self._all_mode:
+                    return await self.async_step_wallbox()
+                return self.async_create_entry(title="", data=self._options)
 
         options_schema = vol.Schema(
             {
@@ -426,7 +468,38 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
             }
         )
 
-        return self.async_show_form(step_id="batteries", data_schema=options_schema)
+        return self.async_show_form(
+            step_id="batteries",
+            data_schema=options_schema,
+            errors=errors,
+            description_placeholders=placeholders,
+        )
+
+    def _validate_battery_entities(self, user_input: dict) -> list[str]:
+        missing: list[str] = []
+
+        base_ids = [
+            user_input.get(CONF_BATTERY_1_ENTITY),
+            user_input.get(CONF_BATTERY_2_ENTITY),
+            user_input.get(CONF_BATTERY_3_ENTITY),
+        ]
+        base_ids = [b.strip() for b in base_ids if isinstance(b, str) and b.strip()]
+
+        for base in base_ids:
+            expected = [
+                f"sensor.{base}_ac_power",
+                f"sensor.{base}_soc",
+                f"number.{base}_modbus_set_forcible_charge_power",
+                f"number.{base}_modbus_set_forcible_discharge_power",
+                f"select.{base}_modbus_force_mode",
+                f"switch.{base}_modbus_rs485_control_mode",
+            ]
+
+            for ent_id in expected:
+                if self.hass.states.get(ent_id) is None:
+                    missing.append(ent_id)
+
+        return missing
 
     async def async_step_wallbox(self, user_input=None):
         """Wallbox configuration step."""
