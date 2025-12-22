@@ -6,7 +6,7 @@ import asyncio
 from typing import Any
 from enum import IntEnum
 
-from homeassistant.core import HomeAssistant, State
+from homeassistant.core import HomeAssistant, State, callback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN, STATE_ON
@@ -158,17 +158,38 @@ class MarstekCoordinator:
                 is_expired = ttl.total_seconds() > 0 and (now - last_ts) > ttl
 
                 if is_same_value and not is_expired:
-                    _LOGGER.debug(
-                        "Skipping cached service call %s.%s for %s (%s=%s)",
-                        domain,
-                        service,
-                        entity_id,
-                        cache_field,
-                        cache_value,
-                    )
+                    # _LOGGER.debug(
+                    #     "Skipping cached service call %s.%s for %s (%s=%s)",
+                    #     domain,
+                    #     service,
+                    #     entity_id,
+                    #     cache_field,
+                    #     cache_value,
+                    # )
                     return
 
-        await self.hass.services.async_call(domain, service, service_data, blocking=blocking)
+        if not self.hass.services.has_service(domain, service):
+            _LOGGER.warning(
+                "Service %s.%s not available. Skipping call for %s",
+                domain,
+                service,
+                entity_id,
+            )
+            return
+
+        try:
+            await self.hass.services.async_call(
+                domain, service, service_data, blocking=blocking
+            )
+        except Exception as err:
+            _LOGGER.warning(
+                "Service call %s.%s failed for %s: %s",
+                domain,
+                service,
+                entity_id,
+                err,
+            )
+            return
         self._service_call_cache[cache_key] = (cache_value, now)
 
     def _get_deque_size(self, mode: str):
@@ -235,7 +256,7 @@ class MarstekCoordinator:
             
         if not self._is_running:
             self._service_call_cache.clear()
-            _LOGGER.debug("Running version 1.1.6")
+            _LOGGER.debug("Running version 1.1.7")
             _LOGGER.debug("Service call cache cleared on coordinator start")
             self._below_min_charge_count = 0
             self._below_min_discharge_count = 0
@@ -276,9 +297,18 @@ class MarstekCoordinator:
             if wb_cable_sensor:
                 trigger_entities.append(wb_cable_sensor)
 
+            @callback
             def _on_state_change(event):
                 entity_id = event.data.get("entity_id")
-                self.hass.async_create_task(self.async_request_update(reason=f"state_change:{entity_id}"))
+
+                def _schedule_update() -> None:
+                    self.hass.async_create_task(
+                        self.async_request_update(reason=f"state_change:{entity_id}")
+                    )
+
+                # Home Assistant may execute state-change callbacks from a non-event-loop thread.
+                # Always schedule the task in a thread-safe way.
+                self.hass.loop.call_soon_threadsafe(_schedule_update)
 
             if trigger_entities:
                 remove = async_track_state_change_event(self.hass, trigger_entities, _on_state_change)
@@ -1058,7 +1088,12 @@ class MarstekCoordinator:
         """Set all configured batteries power to 0."""
         _LOGGER.debug("Setting all batteries to 0W.")
         tasks = [self._set_battery_power(b_id, 0, 0) for b_id in self._battery_entities]
-        await asyncio.gather(*tasks)
+        if not tasks:
+            return
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for res in results:
+            if isinstance(res, Exception):
+                _LOGGER.debug("Ignored error while setting batteries to 0W: %s", res)
 
     async def _disable_modbus_control_mode(self, target_num_batteries: int = 1):
         """Disable Modbus RS485 control mode based on power stages and battery priority.
@@ -1080,13 +1115,34 @@ class MarstekCoordinator:
             
             if battery_base_id in batteries_to_disable_list:
                 # Disable Modbus control (turn off) - set to automatic
-                tasks.append(self.hass.services.async_call("switch", "turn_off", {"entity_id": modbus_control_mode}, blocking=True))
+                if self.hass.services.has_service("switch", "turn_off"):
+                    tasks.append(
+                        self.hass.services.async_call(
+                            "switch",
+                            "turn_off",
+                            {"entity_id": modbus_control_mode},
+                            blocking=True,
+                        )
+                    )
             else:
                 # Enable Modbus control (turn on) - keep in manual/forcible mode
-                tasks.append(self.hass.services.async_call("switch", "turn_on", {"entity_id": modbus_control_mode}, blocking=True))
+                if self.hass.services.has_service("switch", "turn_on"):
+                    tasks.append(
+                        self.hass.services.async_call(
+                            "switch",
+                            "turn_on",
+                            {"entity_id": modbus_control_mode},
+                            blocking=True,
+                        )
+                    )
                 tasks.append(self._set_battery_power(battery_base_id, 0, 0)) # Set power to 0 for batteries not in control
 
-        await asyncio.gather(*tasks)
+        if not tasks:
+            return
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for res in results:
+            if isinstance(res, Exception):
+                _LOGGER.debug("Ignored error while disabling modbus control mode: %s", res)
 
     def _get_effective_update_interval(self) -> int:
         """Calculate the effective update interval based on CT-Mode and wallbox activity."""

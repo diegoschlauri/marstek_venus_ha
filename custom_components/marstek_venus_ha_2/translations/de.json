@@ -1,0 +1,129 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Marstek Venus",
+        "description": "Sensoren und grundlegendes Verhalten konfigurieren.",
+        "data": {
+          "ct_mode": "CT-Zangenmodus",
+          "grid_power_sensor": "Netzleistungs-Sensor",
+          "pv_power_sensor": "PV-Leistungs-Sensor (optional)",
+          "smoothing_seconds": "Glättungsfenster (Sekunden)",
+          "coordinator_update_interval_seconds": "Minimales Update-Intervall (Sekunden)",
+          "service_call_cache_seconds": "Service-Call-Cache TTL (Sekunden)"
+        }
+      },
+      "batteries": {
+        "title": "Batterien",
+        "description": "Batterien und Leistungsgrenzen konfigurieren.",
+        "data": {
+          "battery_1_entity": "Batterie 1 Gerät/Entity",
+          "battery_2_entity": "Batterie 2 Gerät/Entity (optional)",
+          "battery_3_entity": "Batterie 3 Gerät/Entity (optional)",
+          "min_soc": "Minimaler Ladezustand (%)",
+          "max_soc": "Maximaler Ladezustand (%)",
+          "max_discharge_power": "Max. Entladeleistung (W)",
+          "max_charge_power": "Max. Ladeleistung (W)",
+          "min_surplus": "Minimaler Überschuss zum Laden (W)",
+          "min_consumption": "Minimaler Verbrauch zum Entladen (W)",
+          "power_stage_discharge_1": "Entlade-Stufe 1 Leistung (W)",
+          "power_stage_discharge_2": "Entlade-Stufe 2 Leistung (W)",
+          "power_stage_charge_1": "Lade-Stufe 1 Leistung (W)",
+          "power_stage_charge_2": "Lade-Stufe 2 Leistung (W)",
+          "power_stage_offset": "Leistungsstufen-Offset (W)",
+          "priority_interval": "Intervall Batteriereihenfolge (Sekunden)"
+        }
+      },
+      "wallbox": {
+        "title": "Wallbox",
+        "description": "Optionale Wallbox-Integration.",
+        "data": {
+          "wallbox_power_sensor": "Wallbox Leistungs-Sensor (optional)",
+          "wallbox_cable_sensor": "Wallbox Kabel verbunden (Sensor, optional)",
+          "wallbox_max_surplus": "Max. Überschuss für Wallbox (W)",
+          "wallbox_power_stability_threshold": "Schwellwert Leistungsstabilität (W)",
+          "wallbox_resume_check_seconds": "Intervall Wiederaufnahmeprüfung (Sekunden)",
+          "wallbox_start_delay_seconds": "Startverzögerung (Sekunden)",
+          "wallbox_retry_minutes": "Wiederholungsverzögerung (Minuten)"
+        }
+      },
+      "pid": {
+        "title": "PID-Regelung",
+        "description": "Optionale PID-Regelung zur Regelung der Netzleistung.",
+        "data": {
+          "pid_enabled": "PID-Regelung aktivieren",
+          "pid_kp": "PID Kp",
+          "pid_ki": "PID Ki",
+          "pid_kd": "PID Kd"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Marstek Venus Optionen",
+        "description": "Konfiguration aktualisieren.",
+        "menu_options": {
+          "all": "Alle (geführt)",
+          "basic": "Basis",
+          "batteries": "Batterien",
+          "wallbox": "Wallbox",
+          "pid": "PID-Regelung"
+        },
+        "data": {
+          "ct_mode": "CT-Zangenmodus",
+          "grid_power_sensor": "Netzleistungs-Sensor",
+          "pv_power_sensor": "PV-Leistungs-Sensor (optional)",
+          "smoothing_seconds": "Glättungsfenster (Sekunden)",
+          "coordinator_update_interval_seconds": "Minimales Update-Intervall (Sekunden)",
+          "service_call_cache_seconds": "Service-Call-Cache TTL (Sekunden)"
+        }
+      },
+      "batteries": {
+        "title": "Batterien",
+        "description": "Batteriekonfiguration und Grenzen aktualisieren.",
+        "data": {
+          "battery_1_entity": "Batterie 1 Gerät/Entity",
+          "battery_2_entity": "Batterie 2 Gerät/Entity (optional)",
+          "battery_3_entity": "Batterie 3 Gerät/Entity (optional)",
+          "min_soc": "Minimaler Ladezustand (%)",
+          "max_soc": "Maximaler Ladezustand (%)",
+          "max_discharge_power": "Max. Entladeleistung (W)",
+          "max_charge_power": "Max. Ladeleistung (W)",
+          "min_surplus": "Minimaler Überschuss zum Laden (W)",
+          "min_consumption": "Minimaler Verbrauch zum Entladen (W)",
+          "power_stage_discharge_1": "Entlade-Stufe 1 Leistung (W)",
+          "power_stage_discharge_2": "Entlade-Stufe 2 Leistung (W)",
+          "power_stage_charge_1": "Lade-Stufe 1 Leistung (W)",
+          "power_stage_charge_2": "Lade-Stufe 2 Leistung (W)",
+          "power_stage_offset": "Leistungsstufen-Offset (W)",
+          "priority_interval": "Intervall Batteriereihenfolge (Sekunden)"
+        }
+      },
+      "wallbox": {
+        "title": "Wallbox",
+        "description": "Wallbox-Einstellungen aktualisieren.",
+        "data": {
+          "wallbox_power_sensor": "Wallbox Leistungs-Sensor (optional)",
+          "wallbox_cable_sensor": "Wallbox Kabel verbunden (Sensor, optional)",
+          "wallbox_max_surplus": "Max. Überschuss für Wallbox (W)",
+          "wallbox_power_stability_threshold": "Schwellwert Leistungsstabilität (W)",
+          "wallbox_resume_check_seconds": "Intervall Wiederaufnahmeprüfung (Sekunden)",
+          "wallbox_start_delay_seconds": "Startverzögerung (Sekunden)",
+          "wallbox_retry_minutes": "Wiederholungsverzögerung (Minuten)"
+        }
+      },
+      "pid": {
+        "title": "PID-Regelung",
+        "description": "PID-Einstellungen aktualisieren.",
+        "data": {
+          "pid_enabled": "PID-Regelung aktivieren",
+          "pid_kp": "PID Kp",
+          "pid_ki": "PID Ki",
+          "pid_kd": "PID Kd"
+        }
+      }
+    }
+  }
+}
