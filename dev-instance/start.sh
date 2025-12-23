@@ -6,6 +6,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 SRC_DIR="$REPO_ROOT/custom_components"
 DST_DIR="$SCRIPT_DIR/config/custom_components"
+EXAMPLE_CONFIG="$SCRIPT_DIR/configuration.yaml"
+HA_CONFIG_DIR="$SCRIPT_DIR/config"
+HA_CONFIG_FILE="$HA_CONFIG_DIR/configuration.yaml"
 
 if [[ ! -d "$SRC_DIR" ]]; then
   echo "ERROR: Source folder not found: $SRC_DIR" >&2
@@ -13,6 +16,14 @@ if [[ ! -d "$SRC_DIR" ]]; then
 fi
 
 mkdir -p "$DST_DIR"
+
+if [[ -f "$EXAMPLE_CONFIG" ]]; then
+  mkdir -p "$HA_CONFIG_DIR"
+  if [[ -f "$HA_CONFIG_FILE" ]]; then
+    cp "$HA_CONFIG_FILE" "$HA_CONFIG_FILE.bak"
+  fi
+  cp "$EXAMPLE_CONFIG" "$HA_CONFIG_FILE"
+fi
 
 echo "Syncing custom_components -> dev-instance/config/custom_components" 
 if command -v rsync >/dev/null 2>&1; then
