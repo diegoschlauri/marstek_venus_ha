@@ -432,7 +432,40 @@ class MarstekCoordinator:
         # - Import  (real_power > 0) -> negative error -> negative output -> discharging
         error = -float(real_power)
         now = datetime.now()
-        output = self._pid_compute_output(error, now)
+
+        if self._pid_prev_ts is None:
+            dt = 0.0
+        else:
+            dt = max(0.0, (now - self._pid_prev_ts).total_seconds())
+
+        derivative = 0.0
+        if dt > 0 and self._pid_prev_error is not None:
+            derivative = (error - self._pid_prev_error) / dt
+
+        try:
+            max_discharge_power = int(self.config.get(CONF_MAX_DISCHARGE_POWER, 2500))
+            max_charge_power = int(self.config.get(CONF_MAX_CHARGE_POWER, 2500))
+        except (ValueError, TypeError):
+            max_discharge_power = int(DEFAULT_MAX_DISCHARGE_POWER)
+            max_charge_power = int(DEFAULT_MAX_CHARGE_POWER)
+
+        raw_output = self._pid_compute_output(error, derivative)
+        requested_abs_power = int(round(abs(raw_output)))
+        number_of_batteries = self._get_desired_number_of_batteries(requested_abs_power)
+
+        sat_pos = float(max_charge_power * max(1, number_of_batteries))
+        sat_neg = float(max_discharge_power * max(1, number_of_batteries))
+
+        output = self._pid_apply_anti_windup(
+            error,
+            dt,
+            derivative,
+            sat_pos,
+            sat_neg,
+        )
+
+        self._pid_prev_error = error
+        self._pid_prev_ts = now
 
         if output == 0:
             await self._set_all_batteries_to_zero()
@@ -452,17 +485,14 @@ class MarstekCoordinator:
         number_of_batteries = self._get_desired_number_of_batteries(requested_abs_power)
 
         # Clamp to configured max power before distributing
-        max_discharge_power = int(self.config.get(CONF_MAX_DISCHARGE_POWER, 2500))
-        max_charge_power = int(self.config.get(CONF_MAX_CHARGE_POWER, 2500))
         max_total = max_charge_power if direction == PowerDir.CHARGE else max_discharge_power
-
         requested_abs_power = min(requested_abs_power, max_total * max(1, number_of_batteries))
 
         # _distribute_power uses abs(power) and self._last_power_direction for mode,
         # so just feed it the magnitude here.
         await self._distribute_power(float(requested_abs_power), number_of_batteries)
 
-    def _pid_compute_output(self, error: float, now: datetime) -> float:
+    def _pid_compute_output(self, error: float, derivative: float) -> float:
         """Compute PID output in Watts (signed)."""
         try:
             kp = float(self._pid_kp)
@@ -473,33 +503,58 @@ class MarstekCoordinator:
             ki = float(DEFAULT_PID_KI)
             kd = float(DEFAULT_PID_KD)
 
-        if self._pid_prev_ts is None:
-            dt = 0.0
-        else:
-            dt = max(0.0, (now - self._pid_prev_ts).total_seconds())
+        output = (kp * error) + (ki * self._pid_integral) + (kd * derivative)
 
-        # Integral term with basic anti-windup clamping
-        if dt > 0 and ki != 0:
+        if abs(output) < 1.0:
+            return 0.0
+
+        return output
+
+    def _pid_apply_anti_windup(
+        self,
+        error: float,
+        dt: float,
+        derivative: float,
+        sat_pos: float,
+        sat_neg: float,
+    ) -> float:
+        try:
+            kp = float(self._pid_kp)
+            ki = float(self._pid_ki)
+            kd = float(self._pid_kd)
+        except (ValueError, TypeError):
+            kp = float(DEFAULT_PID_KP)
+            ki = float(DEFAULT_PID_KI)
+            kd = float(DEFAULT_PID_KD)
+
+        if ki == 0:
+            output = (kp * error) + (kd * derivative)
+            output = max(-sat_neg, min(sat_pos, output))
+            return 0.0 if abs(output) < 1.0 else output
+
+        # Integrate first (this yields the "unconstrained" integral state for this step)
+        if dt > 0:
             self._pid_integral += error * dt
 
-            max_discharge_power = float(self.config.get(CONF_MAX_DISCHARGE_POWER, 2500))
-            max_charge_power = float(self.config.get(CONF_MAX_CHARGE_POWER, 2500))
-            max_out = max(max_charge_power, max_discharge_power)
+        # Compute unconstrained output with the updated integral
+        u_unsat = (kp * error) + (ki * self._pid_integral) + (kd * derivative)
+        u_sat = max(-sat_neg, min(sat_pos, u_unsat))
 
-            max_integral = max_out / abs(ki)
+        # Back-calculation / tracking anti-windup:
+        # When saturated, pull the integrator back so that the controller output matches u_sat.
+        if u_sat != u_unsat:
+            self._pid_integral += (u_sat - u_unsat) / ki
+
+        # Safety clamp on integral so it cannot drive output beyond saturation on its own.
+        if ki != 0:
+            max_integral = max(sat_pos, sat_neg) / abs(ki)
             if self._pid_integral > max_integral:
                 self._pid_integral = max_integral
             elif self._pid_integral < -max_integral:
                 self._pid_integral = -max_integral
 
-        derivative = 0.0
-        if dt > 0 and self._pid_prev_error is not None:
-            derivative = (error - self._pid_prev_error) / dt
-
-        self._pid_prev_error = error
-        self._pid_prev_ts = now
-
         output = (kp * error) + (ki * self._pid_integral) + (kd * derivative)
+        output = max(-sat_neg, min(sat_pos, output))
 
         if abs(output) < 1.0:
             return 0.0
