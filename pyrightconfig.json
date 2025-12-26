@@ -1,0 +1,20 @@
+{
+  "include": [
+    "custom_components/marstek_venus_ha_2"
+  ],
+  "exclude": [
+    "dev-instance/config",
+    "tests",
+    "**/__pycache__",
+    ".pytest_cache",
+    ".git"
+  ],
+  "ignore": [
+    "custom_components/marstek_venus_ha_2/config_flow.py"
+  ],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": false,
+  "reportMissingTypeStubs": false,
+  "pythonVersion": "3.12",
+  "pythonPlatform": "All"
+}

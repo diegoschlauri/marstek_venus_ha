@@ -67,6 +67,7 @@ input_select:
       - idle
       - charge
       - discharge
+      - standby
     initial: idle
 
 input_boolean:
