@@ -2,6 +2,10 @@
 
 DOMAIN = "marstek_venus_ha_2"
 
+PLATFORMS: list[str] = ["sensor"]
+
+SIGNAL_DIAGNOSTICS_UPDATED = f"{DOMAIN}_diagnostics_updated"
+
 # Configuration Keys
 CONF_CT_MODE = "ct_mode"
 CONF_GRID_POWER_SENSOR = "grid_power_sensor"

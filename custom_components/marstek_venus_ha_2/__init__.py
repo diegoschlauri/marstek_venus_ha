@@ -4,7 +4,7 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN
+from .const import DOMAIN, PLATFORMS
 from .coordinator import MarstekCoordinator
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -15,6 +15,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_start_listening()
 
     hass.data[DOMAIN][entry.entry_id] = coordinator
+
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     if not hass.services.has_service(DOMAIN, "trigger_update"):
         async def _handle_trigger_update(call):
@@ -41,7 +43,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator: MarstekCoordinator | None = domain_data.pop(entry.entry_id, None)
     if coordinator is not None:
         await coordinator.async_stop_listening()
-    return True
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload the config entry when options are changed."""

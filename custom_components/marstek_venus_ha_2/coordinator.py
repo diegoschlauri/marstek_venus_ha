@@ -10,8 +10,11 @@ from homeassistant.core import HomeAssistant, State, callback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN, STATE_ON
+from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.util import dt as dt_util
 
 from .const import (
+    SIGNAL_DIAGNOSTICS_UPDATED,
     CONF_CT_MODE,
     CONF_GRID_POWER_SENSOR,
     CONF_SMOOTHING_SECONDS,
@@ -62,6 +65,13 @@ class PowerDir(IntEnum):
 
 class MarstekCoordinator:
     """The main coordinator for handling battery logic."""
+
+    def _as_aware_datetime(self, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
+        return value
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
         """Initialize the coordinator."""
@@ -125,6 +135,238 @@ class MarstekCoordinator:
             ] if b
         ]
 
+    def _get_deque_size(self, mode: str):
+        if mode == "smoothing":
+            seconds = self.config.get(CONF_SMOOTHING_SECONDS)
+        elif mode == "wallbox":
+            seconds = self.config.get(CONF_WALLBOX_RESUME_CHECK_SECONDS)
+        else:
+            return 1
+        return max(1, seconds)
+
+    @property
+    def is_running(self) -> bool:
+        return self._is_running
+
+    @property
+    def ct_mode(self) -> bool:
+        return bool(self._ct_mode)
+
+    @property
+    def effective_update_interval(self) -> int:
+        return int(self._get_effective_update_interval())
+
+    @property
+    def last_update_start_iso(self) -> str | None:
+        value = self.last_update_start
+        if value is None:
+            return None
+        return value.isoformat()
+
+    @property
+    def last_update_start(self) -> datetime | None:
+        return self._as_aware_datetime(self._last_update_start)
+
+    @property
+    def service_call_cache_size(self) -> int:
+        return len(self._service_call_cache)
+
+    @property
+    def wallbox_is_active(self) -> bool:
+        return bool(self._wallbox_is_active)
+
+    @property
+    def wallbox_charge_paused(self) -> bool:
+        return bool(self._wallbox_charge_paused)
+
+    @property
+    def wallbox_wait_start_iso(self) -> str | None:
+        value = self.wallbox_wait_start
+        if value is None:
+            return None
+        return value.isoformat()
+
+    @property
+    def wallbox_wait_start(self) -> datetime | None:
+        return self._as_aware_datetime(self._wallbox_wait_start)
+
+    @property
+    def battery_priority_ids(self) -> str:
+        try:
+            return ",".join(str(b.get("id")) for b in self._battery_priority if isinstance(b, dict))
+        except Exception:
+            return ""
+
+    @property
+    def last_power_direction_name(self) -> str:
+        try:
+            return PowerDir(self._last_power_direction).name
+        except Exception:
+            return str(self._last_power_direction)
+
+    @property
+    def below_min_charge_count(self) -> int:
+        return int(self._below_min_charge_count)
+
+    @property
+    def below_min_discharge_count(self) -> int:
+        return int(self._below_min_discharge_count)
+
+    @property
+    def pid_enabled(self) -> bool:
+        return bool(self._pid_enabled)
+
+    @property
+    def pid_integral(self) -> float:
+        return float(self._pid_integral)
+
+    @property
+    def pid_prev_error(self) -> float | None:
+        return self._pid_prev_error
+
+    @property
+    def wallbox_cooldown_remaining_seconds(self) -> int | None:
+        try:
+            if self._last_wallbox_pause_attempt == datetime.min:
+                return None
+            retry_minutes = self.config.get(CONF_WALLBOX_RETRY_MINUTES, 60)
+            retry_seconds = int(retry_minutes) * 60
+            end = self._last_wallbox_pause_attempt + timedelta(seconds=retry_seconds)
+            remaining = int(round((end - datetime.now()).total_seconds()))
+            return max(0, remaining)
+        except Exception:
+            return None
+
+    @property
+    def wallbox_cooldown_end_iso(self) -> str | None:
+        try:
+            if self._last_wallbox_pause_attempt == datetime.min:
+                return None
+            retry_minutes = self.config.get(CONF_WALLBOX_RETRY_MINUTES, 60)
+            retry_seconds = int(retry_minutes) * 60
+            end = self._last_wallbox_pause_attempt + timedelta(seconds=retry_seconds)
+            end_dt = self._as_aware_datetime(end)
+            return None if end_dt is None else end_dt.isoformat()
+        except Exception:
+            return None
+
+    @property
+    def wallbox_cooldown_end(self) -> datetime | None:
+        try:
+            if self._last_wallbox_pause_attempt == datetime.min:
+                return None
+            retry_minutes = self.config.get(CONF_WALLBOX_RETRY_MINUTES, 60)
+            retry_seconds = int(retry_minutes) * 60
+            end = self._last_wallbox_pause_attempt + timedelta(seconds=retry_seconds)
+            return self._as_aware_datetime(end)
+        except Exception:
+            return None
+
+    @property
+    def wallbox_start_delay_remaining_seconds(self) -> int | None:
+        try:
+            if self._wallbox_wait_start is None:
+                return None
+            start_delay = int(self.config.get(CONF_WALLBOX_START_DELAY_SECONDS, 0))
+            end = self._wallbox_wait_start + timedelta(seconds=start_delay)
+            remaining = int(round((end - datetime.now()).total_seconds()))
+            return max(0, remaining)
+        except Exception:
+            return None
+
+    @property
+    def wallbox_start_delay_end_iso(self) -> str | None:
+        try:
+            if self._wallbox_wait_start is None:
+                return None
+            start_delay = int(self.config.get(CONF_WALLBOX_START_DELAY_SECONDS, 0))
+            end = self._wallbox_wait_start + timedelta(seconds=start_delay)
+            end_dt = self._as_aware_datetime(end)
+            return None if end_dt is None else end_dt.isoformat()
+        except Exception:
+            return None
+
+    @property
+    def wallbox_start_delay_end(self) -> datetime | None:
+        try:
+            if self._wallbox_wait_start is None:
+                return None
+            start_delay = int(self.config.get(CONF_WALLBOX_START_DELAY_SECONDS, 0))
+            end = self._wallbox_wait_start + timedelta(seconds=start_delay)
+            return self._as_aware_datetime(end)
+        except Exception:
+            return None
+
+    @property
+    def priority_next_update_remaining_seconds(self) -> int | None:
+        try:
+            if self._last_priority_update == datetime.min:
+                return None
+            minutes = self.config.get(CONF_PRIORITY_INTERVAL)
+            interval_minutes = int(minutes) if minutes is not None else 0
+            end = self._last_priority_update + timedelta(minutes=interval_minutes)
+            remaining = int(round((end - datetime.now()).total_seconds()))
+            return max(0, remaining)
+        except Exception:
+            return None
+
+    @property
+    def priority_next_update_iso(self) -> str | None:
+        try:
+            if self._last_priority_update == datetime.min:
+                return None
+            minutes = self.config.get(CONF_PRIORITY_INTERVAL)
+            interval_minutes = int(minutes) if minutes is not None else 0
+            end = self._last_priority_update + timedelta(minutes=interval_minutes)
+            end_dt = self._as_aware_datetime(end)
+            return None if end_dt is None else end_dt.isoformat()
+        except Exception:
+            return None
+
+    @property
+    def priority_next_update(self) -> datetime | None:
+        try:
+            if self._last_priority_update == datetime.min:
+                return None
+            minutes = self.config.get(CONF_PRIORITY_INTERVAL)
+            interval_minutes = int(minutes) if minutes is not None else 0
+            end = self._last_priority_update + timedelta(minutes=interval_minutes)
+            return self._as_aware_datetime(end)
+        except Exception:
+            return None
+
+    @property
+    def priority_rate_limit_remaining_seconds(self) -> int | None:
+        try:
+            if self._last_priority_update == datetime.min:
+                return None
+            end = self._last_priority_update + timedelta(seconds=10)
+            remaining = int(round((end - datetime.now()).total_seconds()))
+            return max(0, remaining)
+        except Exception:
+            return None
+
+    @property
+    def priority_rate_limit_end_iso(self) -> str | None:
+        try:
+            if self._last_priority_update == datetime.min:
+                return None
+            end = self._last_priority_update + timedelta(seconds=10)
+            end_dt = self._as_aware_datetime(end)
+            return None if end_dt is None else end_dt.isoformat()
+        except Exception:
+            return None
+
+    @property
+    def priority_rate_limit_end(self) -> datetime | None:
+        try:
+            if self._last_priority_update == datetime.min:
+                return None
+            end = self._last_priority_update + timedelta(seconds=10)
+            return self._as_aware_datetime(end)
+        except Exception:
+            return None
+
     def _get_service_call_cache_ttl(self) -> timedelta:
         try:
             seconds = int(self._service_call_cache_ttl_seconds)
@@ -156,16 +398,7 @@ class MarstekCoordinator:
                 last_value, last_ts = cached
                 is_same_value = last_value == cache_value
                 is_expired = ttl.total_seconds() > 0 and (now - last_ts) > ttl
-
                 if is_same_value and not is_expired:
-                    # _LOGGER.debug(
-                    #     "Skipping cached service call %s.%s for %s (%s=%s)",
-                    #     domain,
-                    #     service,
-                    #     entity_id,
-                    #     cache_field,
-                    #     cache_value,
-                    # )
                     return
 
         if not self.hass.services.has_service(domain, service):
@@ -178,9 +411,7 @@ class MarstekCoordinator:
             return
 
         try:
-            await self.hass.services.async_call(
-                domain, service, service_data, blocking=blocking
-            )
+            await self.hass.services.async_call(domain, service, service_data, blocking=blocking)
         except Exception as err:
             _LOGGER.warning(
                 "Service call %s.%s failed for %s: %s",
@@ -191,17 +422,6 @@ class MarstekCoordinator:
             )
             return
         self._service_call_cache[cache_key] = (cache_value, now)
-
-    def _get_deque_size(self, mode: str):
-        """Calculate deque size based on config."""
-        if mode == "smoothing":
-            seconds = self.config.get(CONF_SMOOTHING_SECONDS)
-        elif mode == "wallbox":
-            seconds = self.config.get(CONF_WALLBOX_RESUME_CHECK_SECONDS)
-        else:
-            return 1
-            
-        return max(1, seconds)
 
     async def wait_for_entity_available(self, entity_id, timeout=10):
         """Wait until the entity is available or timeout."""
@@ -354,6 +574,7 @@ class MarstekCoordinator:
         self._last_update_start = datetime.now()
         _LOGGER.debug("Coordinator update triggered (%s).", reason)
         await self._async_update()
+        async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
 
     async def async_stop_listening(self):
         """Stop the coordinator's update loop."""
