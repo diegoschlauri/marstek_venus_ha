@@ -3,7 +3,7 @@ import logging
 from collections import deque
 from datetime import datetime, timedelta
 import asyncio
-from typing import Any
+from typing import Any, cast
 from enum import IntEnum
 
 from homeassistant.core import HomeAssistant, State, callback
@@ -43,6 +43,14 @@ from .const import (
     CONF_WALLBOX_RETRY_MINUTES,
     CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS,
     CONF_SERVICE_CALL_CACHE_SECONDS,
+    DEFAULT_MAX_DISCHARGE_POWER,
+    DEFAULT_MAX_CHARGE_POWER,
+    DEFAULT_MIN_SOC,
+    DEFAULT_MAX_SOC,
+    DEFAULT_PRIORITY_INTERVAL,
+    DEFAULT_SMOOTHING_SECONDS,
+    DEFAULT_WALLBOX_POWER_STABILITY_THRESHOLD,
+    DEFAULT_WALLBOX_START_DELAY_SECONDS,
     DEFAULT_SERVICE_CALL_CACHE_SECONDS,
     CONF_PID_ENABLED,
     CONF_PID_KP,
@@ -137,12 +145,16 @@ class MarstekCoordinator:
 
     def _get_deque_size(self, mode: str):
         if mode == "smoothing":
-            seconds = self.config.get(CONF_SMOOTHING_SECONDS)
+            seconds = self.config.get(CONF_SMOOTHING_SECONDS, DEFAULT_SMOOTHING_SECONDS)
         elif mode == "wallbox":
             seconds = self.config.get(CONF_WALLBOX_RESUME_CHECK_SECONDS)
         else:
             return 1
-        return max(1, seconds)
+        try:
+            seconds_int = int(seconds or 0)
+        except (TypeError, ValueError):
+            seconds_int = 0
+        return max(1, seconds_int)
 
     @property
     def is_running(self) -> bool:
@@ -796,6 +808,8 @@ class MarstekCoordinator:
     def _get_smoothed_grid_power(self) -> float | None:
         """Get the current power from the grid sensor and calculate the smoothed average."""
         grid_sensor_id = self.config.get(CONF_GRID_POWER_SENSOR)
+        if not isinstance(grid_sensor_id, str) or not grid_sensor_id:
+            return None
         current_power = self._get_float_state(grid_sensor_id)
         
         if current_power is None:
@@ -804,7 +818,10 @@ class MarstekCoordinator:
         self._power_history.append(current_power)
         if not self._power_history:
             return 0.0
-        smoothing = self.config.get(CONF_SMOOTHING_SECONDS)
+        try:
+            smoothing = int(self.config.get(CONF_SMOOTHING_SECONDS, DEFAULT_SMOOTHING_SECONDS) or 0)
+        except (TypeError, ValueError):
+            smoothing = 0
         if smoothing > 0:
             avg_power = sum(self._power_history) / len(self._power_history)
         else:
@@ -864,18 +881,41 @@ class MarstekCoordinator:
         wb_cable_sensor = self.config.get(CONF_WALLBOX_CABLE_SENSOR)
         max_surplus = self.config.get(CONF_WALLBOX_MAX_SURPLUS)
         stability_treshold = self.config.get(CONF_WALLBOX_POWER_STABILITY_THRESHOLD)
-        start_delay = self.config.get(CONF_WALLBOX_START_DELAY_SECONDS)
+        try:
+            start_delay = int(self.config.get(CONF_WALLBOX_START_DELAY_SECONDS, DEFAULT_WALLBOX_START_DELAY_SECONDS) or 0)
+        except (TypeError, ValueError):
+            start_delay = int(DEFAULT_WALLBOX_START_DELAY_SECONDS)
         retry_minutes = self.config.get(CONF_WALLBOX_RETRY_MINUTES, 60)
         retry_seconds = retry_minutes * 60
 
         # 0. Grundvoraussetzungen prüfen
-        if not all([wb_power_sensor, wb_cable_sensor, max_surplus is not None]):
+        if not all([
+            isinstance(wb_power_sensor, str) and wb_power_sensor,
+            isinstance(wb_cable_sensor, str) and wb_cable_sensor,
+            max_surplus is not None,
+        ]):
             _LOGGER.debug("Wallbox configuration incomplete. Skipping wallbox logic.")
             self._wallbox_charge_paused = False
             self._wallbox_cable_was_on = False # Zurücksetzen des Kabelzustands
             return False
 
-        cable_state = self._get_entity_state(wb_cable_sensor)
+        wb_power_sensor_id = cast(str, wb_power_sensor)
+        wb_cable_sensor_id = cast(str, wb_cable_sensor)
+        try:
+            max_surplus_w = float(cast(Any, max_surplus))
+        except (TypeError, ValueError):
+            _LOGGER.debug("Wallbox max_surplus invalid (%s). Skipping wallbox logic.", max_surplus)
+            return False
+
+        if stability_treshold is None:
+            stability_threshold_w = float(DEFAULT_WALLBOX_POWER_STABILITY_THRESHOLD)
+        else:
+            try:
+                stability_threshold_w = float(cast(Any, stability_treshold))
+            except (TypeError, ValueError):
+                stability_threshold_w = float(DEFAULT_WALLBOX_POWER_STABILITY_THRESHOLD)
+
+        cable_state = self._get_entity_state(wb_cable_sensor_id)
 
         cable_on = cable_state and cable_state.state == STATE_ON
 
@@ -893,7 +933,7 @@ class MarstekCoordinator:
         self._wallbox_cable_was_on = True # Kabel ist jetzt eingesteckt
             
         wb_power = 0.0
-        wb_power_state = self._get_entity_state(wb_power_sensor)
+        wb_power_state = self._get_entity_state(wb_power_sensor_id)
         _LOGGER.debug(f"Wallbox power state: {wb_power_state.state if wb_power_state else 'N/A'}")
         if wb_power_state:
             try:
@@ -918,7 +958,7 @@ class MarstekCoordinator:
             # JA, Pause ist aktiv. Prüfe Bedingungen, um die Pause zu BEENDEN.
             _LOGGER.debug("Wallbox pause is currently active. Checking conditions to end pause.")
             # Regel 1.5: Überschuss weggefallen? -> -> Pause beenden (gilt nur, wenn das Auto nicht geladen hat)
-            if (real_power >= -max_surplus) and (wb_power <= 100):
+            if (real_power >= -max_surplus_w) and (wb_power <= 100):
                 _LOGGER.info(f"Surplus ({abs(real_power):.0f}W) is below threshold ({max_surplus}W). And Wallbox-Power ({wb_power}W) is below 100. Releasing batteries.")
                 self._wallbox_charge_paused = False
                 self._wallbox_power_history.clear()
@@ -946,7 +986,7 @@ class MarstekCoordinator:
 
                     _LOGGER.debug(f"Wallbox resume check: Min={min_power:.0f}W, Max={max_power:.0f}W, Spread={power_spread:.0f}W")
 
-                    if power_spread < stability_treshold:
+                    if power_spread < stability_threshold_w:
                         _LOGGER.debug(f"Wallbox power has stabilized (Spread < {stability_treshold}W). Releasing batteries.")
                         self._wallbox_charge_paused = False
                         self._wallbox_power_history.clear()
@@ -976,7 +1016,7 @@ class MarstekCoordinator:
         else:
             _LOGGER.debug("No wallbox pause active. Checking if conditions to start pause are met.")
             # Regel 2 (Start): Genug Überschuss UND Auto lädt nicht UND Cooldown abgelaufen? -> Pause starten
-            if real_power < -max_surplus and wb_power <= 100:
+            if real_power < -max_surplus_w and wb_power <= 100:
                 now = datetime.now()
                 time_since_last_attempt = (now - self._last_wallbox_pause_attempt).total_seconds()
                 
@@ -1000,7 +1040,7 @@ class MarstekCoordinator:
                     await self._set_all_batteries_to_zero() 
                     return True
                 # Regel 3 (WB Leistung erhöhen): Genug Überschuss UND Auto lädt UND Cooldown abgelaufen? -> Pause starten um Wallbox Prio zu geben
-            elif (real_power - wb_power) < -max_surplus and wb_power >= 100:
+            elif (real_power - wb_power) < -max_surplus_w and wb_power >= 100:
                 now = datetime.now()
                 time_since_last_attempt = (now - self._last_wallbox_pause_attempt).total_seconds()
                 
@@ -1037,16 +1077,20 @@ class MarstekCoordinator:
     async def _update_battery_priority_if_needed(self, real_power: float):
         """Check conditions and update battery priority list."""
         
-        # power direction: 1 for charging, -1 for discharging, 0 for neutral
-        power_direction = 0
+        # power direction: CHARGE for charging, DISCHARGE for discharging, NEUTRAL for neutral
+        power_direction = PowerDir.NEUTRAL
 
         # decide the new direction
-        if real_power  < 0:
-            power_direction = 1 # charging
-        elif real_power  > 0:
-            power_direction = -1 # discharging
+        if real_power < 0:
+            power_direction = PowerDir.CHARGE
+        elif real_power > 0:
+            power_direction = PowerDir.DISCHARGE
 
-        priority_interval = timedelta(minutes=self.config.get(CONF_PRIORITY_INTERVAL))
+        try:
+            priority_minutes = float(self.config.get(CONF_PRIORITY_INTERVAL, DEFAULT_PRIORITY_INTERVAL) or DEFAULT_PRIORITY_INTERVAL)
+        except (TypeError, ValueError):
+            priority_minutes = float(DEFAULT_PRIORITY_INTERVAL)
+        priority_interval = timedelta(minutes=priority_minutes)
         time_since_last_update = datetime.now() - self._last_priority_update
 
         # Rate limit: only allow updates at most once per 10 seconds
@@ -1071,8 +1115,14 @@ class MarstekCoordinator:
             self._battery_priority = []
             return
 
-        min_soc = self.config.get(CONF_MIN_SOC)
-        max_soc = self.config.get(CONF_MAX_SOC)
+        try:
+            min_soc = float(self.config.get(CONF_MIN_SOC, DEFAULT_MIN_SOC) or DEFAULT_MIN_SOC)
+        except (TypeError, ValueError):
+            min_soc = float(DEFAULT_MIN_SOC)
+        try:
+            max_soc = float(self.config.get(CONF_MAX_SOC, DEFAULT_MAX_SOC) or DEFAULT_MAX_SOC)
+        except (TypeError, ValueError):
+            max_soc = float(DEFAULT_MAX_SOC)
         
         available_batteries = []
         for base_entity_id in self._battery_entities:

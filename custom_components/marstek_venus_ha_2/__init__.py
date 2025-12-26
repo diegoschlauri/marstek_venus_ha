@@ -26,8 +26,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 if c is not None:
                     await c.async_request_update(reason="service")
                 return
-            for c in hass.data.get(DOMAIN, {}).values():
-                await c.async_request_update(reason="service")
+            for value in hass.data.get(DOMAIN, {}).values():
+                if isinstance(value, MarstekCoordinator):
+                    await value.async_request_update(reason="service")
 
         hass.services.async_register(DOMAIN, "trigger_update", _handle_trigger_update)
 
