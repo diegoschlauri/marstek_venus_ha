@@ -104,7 +104,7 @@
           "power_stage_charge_1": "Charge stage 1 power (W)",
           "power_stage_charge_2": "Charge stage 2 power (W)",
           "power_stage_offset": "Power stage offset (W)",
-          "priority_interval": "Battery priority rotation interval (seconds)"
+          "priority_interval": "Battery priority rotation interval (minutes)"
         }
       },
       "wallbox": {

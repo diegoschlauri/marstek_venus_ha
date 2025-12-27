@@ -170,7 +170,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         for base in base_ids:
             expected = [
                 f"sensor.{base}_ac_power",
-                f"sensor.{base}_soc",
+                f"sensor.{base}_battery_soc",
                 f"number.{base}_modbus_set_forcible_charge_power",
                 f"number.{base}_modbus_set_forcible_discharge_power",
                 f"select.{base}_modbus_force_mode",
@@ -488,7 +488,7 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
         for base in base_ids:
             expected = [
                 f"sensor.{base}_ac_power",
-                f"sensor.{base}_soc",
+                f"sensor.{base}_battery_soc",
                 f"number.{base}_modbus_set_forcible_charge_power",
                 f"number.{base}_modbus_set_forcible_discharge_power",
                 f"select.{base}_modbus_force_mode",
