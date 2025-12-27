@@ -105,6 +105,8 @@ class MarstekCoordinator:
         self._pid_integral = 0.0
         self._pid_prev_error: float | None = None
         self._pid_prev_ts: datetime | None = None
+        self._pid_suspended = False
+        self._pid_suspend_direction: PowerDir = PowerDir.NEUTRAL
 
         self._is_running = False
         self._unsub_listeners: list[Any] = []
@@ -471,6 +473,9 @@ class MarstekCoordinator:
         if self._is_running or self._unsub_listeners or self._update_task is not None:
             await self.async_stop_listening()
 
+        self._pid_suspended = False
+        self._pid_suspend_direction = PowerDir.NEUTRAL
+
         # Wait concurrently for configured entities (avoids additive timeouts)
         wait_entities = []
         grid_power_sensor = self.config.get(CONF_GRID_POWER_SENSOR)
@@ -645,6 +650,25 @@ class MarstekCoordinator:
             return
 
         if not self._ct_mode and self._pid_enabled:
+            if self._pid_suspended:
+                min_surplus_for_charging = self.config.get(CONF_MIN_SURPLUS, 50)
+                min_consumption_for_discharging = self.config.get(CONF_MIN_CONSUMPTION, 50)
+
+                should_resume = False
+                if self._pid_suspend_direction == PowerDir.CHARGE:
+                    should_resume = real_power < -float(min_surplus_for_charging)
+                elif self._pid_suspend_direction == PowerDir.DISCHARGE:
+                    should_resume = real_power > float(min_consumption_for_discharging)
+
+                if not should_resume:
+                    # Keep batteries at 0 and keep PID state reset until load crosses the threshold again.
+                    await self._set_all_batteries_to_zero()
+                    return
+
+                _LOGGER.debug("PID suspension released (direction=%s)", self._pid_suspend_direction.name)
+                self._pid_suspended = False
+                self._pid_suspend_direction = PowerDir.NEUTRAL
+
             _LOGGER.debug("PID input grid power: %sW (target=0W)", round(smoothed_grid_power, 2))
             await self._pid_control_step(smoothed_grid_power)
             return
@@ -727,7 +751,12 @@ class MarstekCoordinator:
 
         # _distribute_power uses abs(power) and self._last_power_direction for mode,
         # so just feed it the magnitude here.
-        await self._distribute_power(float(requested_abs_power), number_of_batteries)
+        await self._distribute_power(float(requested_abs_power), number_of_batteries, from_pid=True)
+
+    def _reset_pid_state(self) -> None:
+        self._pid_integral = 0.0
+        self._pid_prev_error = None
+        self._pid_prev_ts = None
 
     def _pid_compute_output(self, error: float, derivative: float) -> float:
         """Compute PID output in Watts (signed)."""
@@ -1221,7 +1250,7 @@ class MarstekCoordinator:
         _LOGGER.debug(f"Determined target number of batteries: {target_num_batteries} (Available: {num_available}, Currently Active: {num_currently_active})")
         return target_num_batteries
 
-    async def _distribute_power(self, power: float, target_num_batteries: int = 1):
+    async def _distribute_power(self, power: float, target_num_batteries: int = 1, *, from_pid: bool = False):
         """Control battery charge/discharge based on power stages."""
         # Defensive: ensure target_num_batteries is an int and within valid range
         try:
@@ -1274,6 +1303,11 @@ class MarstekCoordinator:
                 )
                 self._below_min_charge_count = 0
                 await self._set_all_batteries_to_zero()
+
+                if from_pid:
+                    self._pid_suspended = True
+                    self._pid_suspend_direction = PowerDir.CHARGE
+                    self._reset_pid_state()
                 return
         
         if self._last_power_direction == PowerDir.DISCHARGE and abs_power < min_consumption_for_discharging:
@@ -1293,6 +1327,11 @@ class MarstekCoordinator:
                 )
                 self._below_min_discharge_count = 0
                 await self._set_all_batteries_to_zero()
+
+                if from_pid:
+                    self._pid_suspended = True
+                    self._pid_suspend_direction = PowerDir.DISCHARGE
+                    self._reset_pid_state()
                 return
 
         # Reset counters when above minimum thresholds
