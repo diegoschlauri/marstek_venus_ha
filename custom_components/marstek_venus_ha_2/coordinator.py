@@ -109,6 +109,8 @@ class MarstekCoordinator:
         self._is_running = False
         self._unsub_listeners: list[Any] = []
 
+        self._instance_id = id(self)
+
         self._update_task: asyncio.Task | None = None
         self._update_lock = asyncio.Lock()
         self._last_update_start: datetime | None = None
@@ -466,6 +468,9 @@ class MarstekCoordinator:
     
     async def async_start_listening(self):
         """Start the coordinator's update loop."""
+        if self._is_running or self._unsub_listeners or self._update_task is not None:
+            await self.async_stop_listening()
+
         # Wait concurrently for configured entities (avoids additive timeouts)
         wait_entities = []
         grid_power_sensor = self.config.get(CONF_GRID_POWER_SENSOR)
@@ -550,7 +555,7 @@ class MarstekCoordinator:
             self.hass.async_create_task(self.async_request_update(reason="startup"))
 
             self._is_running = True
-            _LOGGER.info("Marstek Venus HA Integration coordinator started.")
+            _LOGGER.info("Marstek Venus HA Integration coordinator started (id=%s).", self._instance_id)
 
     async def async_request_update(self, *, reason: str = "manual") -> None:
         """Request a coordinator update.
@@ -602,7 +607,7 @@ class MarstekCoordinator:
         self._update_task = None
         self._is_running = False
         await self._set_all_batteries_to_zero()
-        _LOGGER.info("Marstek Venus HA Integration coordinator stopped.")
+        _LOGGER.info("Marstek Venus HA Integration coordinator stopped (id=%s).", self._instance_id)
 
     def _get_entity_state(self, entity_id: str) -> State | None:
         """Safely get the state of an entity."""
