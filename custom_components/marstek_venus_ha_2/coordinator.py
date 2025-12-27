@@ -493,7 +493,7 @@ class MarstekCoordinator:
             
         if not self._is_running:
             self._service_call_cache.clear()
-            _LOGGER.debug("Running version 1.1.7")
+            _LOGGER.debug("Running version 1.1.8")
             _LOGGER.debug("Service call cache cleared on coordinator start")
             self._below_min_charge_count = 0
             self._below_min_discharge_count = 0
