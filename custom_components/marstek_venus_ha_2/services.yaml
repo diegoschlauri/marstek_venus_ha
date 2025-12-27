@@ -1,0 +1,10 @@
+trigger_update:
+  name: Trigger update
+  description: Trigger an immediate coordinator update cycle.
+  fields:
+    entry_id:
+      name: Config entry id
+      description: Optional config entry id to target a specific instance. If omitted, all configured entries are updated.
+      required: false
+      selector:
+        text:
