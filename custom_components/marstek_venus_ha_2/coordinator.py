@@ -712,12 +712,11 @@ class MarstekCoordinator:
         direction = PowerDir.CHARGE if output > 0 else PowerDir.DISCHARGE
         requested_abs_power = int(round(abs(output)))
 
+        # Update priority list with the same gating behavior as non-PID mode.
+        await self._update_battery_priority_if_needed(power_direction=direction)
+
         # Ensure staging logic uses the intended direction
         self._last_power_direction = direction
-
-        # Update priority list deterministically for the intended direction
-        await self._calculate_battery_priority(direction)
-        self._last_priority_update = now
 
         # Determine how many batteries to use based on requested output magnitude
         number_of_batteries = self._get_desired_number_of_batteries(requested_abs_power)
@@ -1079,17 +1078,26 @@ class MarstekCoordinator:
         # Kein Grund zur Intervention -> Normale Batterielogik ausführen lassen
         return False
 
-    async def _update_battery_priority_if_needed(self, real_power: float):
+    async def _update_battery_priority_if_needed(
+        self,
+        real_power: float | None = None,
+        *,
+        power_direction: PowerDir | None = None,
+    ):
         """Check conditions and update battery priority list."""
         
-        # power direction: CHARGE for charging, DISCHARGE for discharging, NEUTRAL for neutral
-        power_direction = PowerDir.NEUTRAL
+        if power_direction is None:
+            if real_power is None:
+                return
 
-        # decide the new direction
-        if real_power < 0:
-            power_direction = PowerDir.CHARGE
-        elif real_power > 0:
-            power_direction = PowerDir.DISCHARGE
+            # power direction: CHARGE for charging, DISCHARGE for discharging, NEUTRAL for neutral
+            power_direction = PowerDir.NEUTRAL
+
+            # decide the new direction
+            if real_power < 0:
+                power_direction = PowerDir.CHARGE
+            elif real_power > 0:
+                power_direction = PowerDir.DISCHARGE
 
         try:
             priority_minutes = float(self.config.get(CONF_PRIORITY_INTERVAL, DEFAULT_PRIORITY_INTERVAL) or DEFAULT_PRIORITY_INTERVAL)
