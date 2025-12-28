@@ -1138,12 +1138,15 @@ class MarstekCoordinator:
         # Rate limit: only allow updates at most once per 10 seconds
         min_update_interval = timedelta(seconds=10)
 
+        # If we have no priority list yet, allow an update immediately so the control loop can start.
+        needs_initial_priority = not self._battery_priority
+
         if (
             power_direction != self._last_power_direction or
             time_since_last_update > priority_interval
         ):
             # Check if enough time has passed since last update
-            if time_since_last_update >= min_update_interval:
+            if needs_initial_priority or time_since_last_update >= min_update_interval:
                 _LOGGER.info(f"Recalculating battery priority. Reason: {'Power direction changed' if power_direction != self._last_power_direction else 'Time interval elapsed'}")
                 await self._calculate_battery_priority(power_direction)
                 self._last_power_direction = power_direction
@@ -1349,22 +1352,73 @@ class MarstekCoordinator:
 
         active_batteries = self._battery_priority[:target_num_batteries]
 
+        # Safety: never command batteries beyond SoC limits, even if priority list is stale.
+        # This is intentionally checked every cycle.
+        try:
+            min_soc = float(self.config.get(CONF_MIN_SOC, DEFAULT_MIN_SOC) or DEFAULT_MIN_SOC)
+        except (TypeError, ValueError):
+            min_soc = float(DEFAULT_MIN_SOC)
+        try:
+            max_soc = float(self.config.get(CONF_MAX_SOC, DEFAULT_MAX_SOC) or DEFAULT_MAX_SOC)
+        except (TypeError, ValueError):
+            max_soc = float(DEFAULT_MAX_SOC)
+
+        if active_batteries:
+            eligible: list[dict[str, Any]] = []
+            for b in active_batteries:
+                base_entity_id = b.get("id") if isinstance(b, dict) else None
+                if not isinstance(base_entity_id, str) or not base_entity_id:
+                    continue
+                soc = self._get_float_state(f"sensor.{base_entity_id}_battery_soc")
+                if soc is None:
+                    continue
+                if self._last_power_direction == PowerDir.CHARGE and soc >= max_soc:
+                    _LOGGER.debug(
+                        "Excluding battery %s from CHARGE: soc=%s >= max_soc=%s",
+                        base_entity_id,
+                        soc,
+                        max_soc,
+                    )
+                    continue
+                if self._last_power_direction == PowerDir.DISCHARGE and soc <= min_soc:
+                    _LOGGER.debug(
+                        "Excluding battery %s from DISCHARGE: soc=%s <= min_soc=%s",
+                        base_entity_id,
+                        soc,
+                        min_soc,
+                    )
+                    continue
+                eligible.append(b)
+            active_batteries = eligible
+
         # Safeguard: if active_batteries is empty (priority list empty), set all to zero and return
         if not active_batteries:
-            _LOGGER.debug(f"No available batteries in priority list (target: {target_num_batteries}). Setting all to zero.")
+            _LOGGER.debug(
+                "No eligible batteries in priority list (target: %s). Setting all to zero.",
+                target_num_batteries,
+            )
             await self._set_all_batteries_to_zero()
+
+            if from_pid:
+                self._reset_pid_state()
             return
 
         power_per_battery = round(abs_power / len(active_batteries))
         # Ensure we do not exceed max charge/discharge power
-        if self._last_power_direction == PowerDir.CHARGE: #Charging
+        if self._last_power_direction == PowerDir.CHARGE:  # Charging
             power_per_battery = min(power_per_battery, max_charge_power)
-        elif self._last_power_direction == PowerDir.DISCHARGE: #Discharging
-            power_per_battery = min(power_per_battery, max_discharge_power) 
+        elif self._last_power_direction == PowerDir.DISCHARGE:  # Discharging
+            power_per_battery = min(power_per_battery, max_discharge_power)
 
-        active_battery_ids = [b['id'] for b in active_batteries]
+        active_battery_ids = [b["id"] for b in active_batteries]
 
-        _LOGGER.debug(f"Distributing {power:.0f}W to {len(active_battery_ids)} batteries: {active_battery_ids} with {power_per_battery}W each.")
+        _LOGGER.debug(
+            "Distributing %sW to %s batteries: %s with %sW each.",
+            round(power, 0),
+            len(active_battery_ids),
+            active_battery_ids,
+            power_per_battery,
+        )
 
         for battery_base_id in self._battery_entities:
             if battery_base_id in active_battery_ids:
