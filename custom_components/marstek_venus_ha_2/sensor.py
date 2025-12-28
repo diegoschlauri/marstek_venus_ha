@@ -30,13 +30,6 @@ DIAGNOSTIC_SENSORS: tuple[DiagnosticSensorDescription, ...] = (
         has_entity_name=True,
     ),
     DiagnosticSensorDescription(
-        key="last_update_start",
-        name="Last Update Start",
-        value_fn=lambda c: c.last_update_start,
-        device_class=SensorDeviceClass.TIMESTAMP,
-        has_entity_name=True,
-    ),
-    DiagnosticSensorDescription(
         key="service_call_cache_entries",
         name="Service Call Cache Entries",
         value_fn=lambda c: c.service_call_cache_size,

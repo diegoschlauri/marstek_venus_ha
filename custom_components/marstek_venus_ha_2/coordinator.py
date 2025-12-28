@@ -209,7 +209,7 @@ class MarstekCoordinator:
     @property
     def battery_priority_ids(self) -> str:
         try:
-            return ",".join(str(b.get("id")) for b in self._battery_priority if isinstance(b, dict))
+            return " ".join(str(b.get("id")) for b in self._battery_priority if isinstance(b, dict))
         except Exception:
             return ""
 
@@ -498,7 +498,7 @@ class MarstekCoordinator:
             
         if not self._is_running:
             self._service_call_cache.clear()
-            _LOGGER.debug("Running version 1.1.8")
+            _LOGGER.debug("Running version 1.1.9")
             _LOGGER.debug("Service call cache cleared on coordinator start")
             self._below_min_charge_count = 0
             self._below_min_discharge_count = 0
@@ -635,7 +635,7 @@ class MarstekCoordinator:
             return
 
         # House load excluding batteries (used by the staging/hysteresis logic)
-        real_power = self._get_real_power()
+        real_power = self._get_real_power(smoothed_grid_power)
         if real_power is None:
             _LOGGER.warning("Could not determine real power. Skipping update cycle.")
             return
@@ -880,11 +880,9 @@ class MarstekCoordinator:
             pv_power *= 1000
         return pv_power
 
-    def _get_real_power(self) -> float | None:
+    def _get_real_power(self, smoothed_grid_power: float | None) -> float | None:
         """Get the real power of the house excluding the batteries. A positiv value means the house uses more power than it produced excluding the batteries. 
         A negative value means the house produces more power than its acutally used excluding the batteries."""
-        smoothed_grid_power = self._get_smoothed_grid_power()
-        
         if smoothed_grid_power is None:
             return None
 
