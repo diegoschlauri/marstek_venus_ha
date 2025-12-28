@@ -104,7 +104,7 @@
           "power_stage_charge_1": "Lade-Stufe 1 Leistung (W)",
           "power_stage_charge_2": "Lade-Stufe 2 Leistung (W)",
           "power_stage_offset": "Leistungsstufen-Offset (W)",
-          "priority_interval": "Intervall Batteriereihenfolge (Sekunden)"
+          "priority_interval": "Intervall Batteriereihenfolge (Minuten)"
         }
       },
       "wallbox": {
