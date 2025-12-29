@@ -241,19 +241,6 @@ class MarstekCoordinator:
         return self._pid_prev_error
 
     @property
-    def wallbox_cooldown_remaining_seconds(self) -> int | None:
-        try:
-            if self._last_wallbox_pause_attempt == datetime.min:
-                return None
-            retry_minutes = self.config.get(CONF_WALLBOX_RETRY_MINUTES, 60)
-            retry_seconds = int(retry_minutes) * 60
-            end = self._last_wallbox_pause_attempt + timedelta(seconds=retry_seconds)
-            remaining = int(round((end - datetime.now()).total_seconds()))
-            return max(0, remaining)
-        except Exception:
-            return None
-
-    @property
     def wallbox_cooldown_end_iso(self) -> str | None:
         try:
             if self._last_wallbox_pause_attempt == datetime.min:
@@ -275,18 +262,6 @@ class MarstekCoordinator:
             retry_seconds = int(retry_minutes) * 60
             end = self._last_wallbox_pause_attempt + timedelta(seconds=retry_seconds)
             return self._as_aware_datetime(end)
-        except Exception:
-            return None
-
-    @property
-    def wallbox_start_delay_remaining_seconds(self) -> int | None:
-        try:
-            if self._wallbox_wait_start is None:
-                return None
-            start_delay = int(self.config.get(CONF_WALLBOX_START_DELAY_SECONDS, 0))
-            end = self._wallbox_wait_start + timedelta(seconds=start_delay)
-            remaining = int(round((end - datetime.now()).total_seconds()))
-            return max(0, remaining)
         except Exception:
             return None
 
@@ -314,19 +289,6 @@ class MarstekCoordinator:
             return None
 
     @property
-    def priority_next_update_remaining_seconds(self) -> int | None:
-        try:
-            if self._last_priority_update == datetime.min:
-                return None
-            minutes = self.config.get(CONF_PRIORITY_INTERVAL)
-            interval_minutes = int(minutes) if minutes is not None else 0
-            end = self._last_priority_update + timedelta(minutes=interval_minutes)
-            remaining = int(round((end - datetime.now()).total_seconds()))
-            return max(0, remaining)
-        except Exception:
-            return None
-
-    @property
     def priority_next_update_iso(self) -> str | None:
         try:
             if self._last_priority_update == datetime.min:
@@ -348,17 +310,6 @@ class MarstekCoordinator:
             interval_minutes = int(minutes) if minutes is not None else 0
             end = self._last_priority_update + timedelta(minutes=interval_minutes)
             return self._as_aware_datetime(end)
-        except Exception:
-            return None
-
-    @property
-    def priority_rate_limit_remaining_seconds(self) -> int | None:
-        try:
-            if self._last_priority_update == datetime.min:
-                return None
-            end = self._last_priority_update + timedelta(seconds=10)
-            remaining = int(round((end - datetime.now()).total_seconds()))
-            return max(0, remaining)
         except Exception:
             return None
 
@@ -989,12 +940,14 @@ class MarstekCoordinator:
             # JA, Pause ist aktiv. Prüfe Bedingungen, um die Pause zu BEENDEN.
             _LOGGER.debug("Wallbox pause is currently active. Checking conditions to end pause.")
             # Regel 1.5: Überschuss weggefallen? -> -> Pause beenden (gilt nur, wenn das Auto nicht geladen hat)
-            if (real_power >= -max_surplus_w) and (wb_power <= 100):
-                _LOGGER.info(f"Surplus ({abs(real_power):.0f}W) is below threshold ({max_surplus}W). And Wallbox-Power ({wb_power}W) is below 100. Releasing batteries.")
-                self._wallbox_charge_paused = False
-                self._wallbox_power_history.clear()
-                self._wallbox_wait_start = None
-                return False
+# to reactivate it, we need a delay of a few seconds before checking the real power
+# as the smoothed power is not updated immediately
+#            if (real_power >= -max_surplus_w) and (wb_power <= 100):
+#                _LOGGER.info(f"Surplus ({abs(real_power):.0f}W) is below threshold ({max_surplus}W). And Wallbox-Power ({wb_power}W) is below 100. Releasing batteries.")
+#                self._wallbox_charge_paused = False
+#                self._wallbox_power_history.clear()
+#                self._wallbox_wait_start = None
+#                return False
 
             # Regel 2 (Timeout): Auto hat nicht angefangen zu laden? -> Pause beenden
             if self._wallbox_wait_start is not None:

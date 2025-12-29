@@ -49,22 +49,10 @@ DIAGNOSTIC_SENSORS: tuple[DiagnosticSensorDescription, ...] = (
         has_entity_name=True,
     ),
     DiagnosticSensorDescription(
-        key="wallbox_start_delay_remaining_seconds",
-        name="Wallbox Start Delay Remaining",
-        value_fn=lambda c: c.wallbox_start_delay_remaining_seconds,
-        has_entity_name=True,
-    ),
-    DiagnosticSensorDescription(
         key="wallbox_start_delay_end",
         name="Wallbox Start Delay End",
         value_fn=lambda c: c.wallbox_start_delay_end,
         device_class=SensorDeviceClass.TIMESTAMP,
-        has_entity_name=True,
-    ),
-    DiagnosticSensorDescription(
-        key="wallbox_cooldown_remaining_seconds",
-        name="Wallbox Cooldown Remaining",
-        value_fn=lambda c: c.wallbox_cooldown_remaining_seconds,
         has_entity_name=True,
     ),
     DiagnosticSensorDescription(
@@ -81,22 +69,10 @@ DIAGNOSTIC_SENSORS: tuple[DiagnosticSensorDescription, ...] = (
         has_entity_name=True,
     ),
     DiagnosticSensorDescription(
-        key="priority_next_update_remaining_seconds",
-        name="Priority Next Update Remaining",
-        value_fn=lambda c: c.priority_next_update_remaining_seconds,
-        has_entity_name=True,
-    ),
-    DiagnosticSensorDescription(
         key="priority_next_update",
         name="Priority Next Update",
         value_fn=lambda c: c.priority_next_update,
         device_class=SensorDeviceClass.TIMESTAMP,
-        has_entity_name=True,
-    ),
-    DiagnosticSensorDescription(
-        key="priority_rate_limit_remaining_seconds",
-        name="Priority Rate Limit Remaining",
-        value_fn=lambda c: c.priority_rate_limit_remaining_seconds,
         has_entity_name=True,
     ),
     DiagnosticSensorDescription(
