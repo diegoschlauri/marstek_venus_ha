@@ -1,0 +1,211 @@
+# Example configuration.yaml for the dev-instance.
+#
+# This file is meant to be copied to:
+#   dev-instance/config/configuration.yaml
+#
+# It provides dummy/template entities required by the integration's config flow
+# validation for the battery prefix "bat1".
+
+default_config:
+
+# Helpers used as simple state storage for the template entities below.
+input_number:
+  bat1_charge_power:
+    name: bat1 charge power
+    min: 0
+    max: 2500
+    step: 1
+    mode: box
+    initial: 0
+  bat1_discharge_power:
+    name: bat1 discharge power
+    min: 0
+    max: 2500
+    step: 1
+    mode: box
+    initial: 0
+  bat1_ac_power:
+    name: bat1 ac power
+    min: -2500
+    max: 2500
+    step: 1
+    mode: box
+    initial: 0
+  bat1_soc:
+    name: bat1 soc
+    min: 0
+    max: 100
+    step: 1
+    mode: box
+    initial: 50
+  grid_power:
+    name: grid power
+    min: -10000
+    max: 10000
+    step: 1
+    mode: box
+    initial: 0
+  pv_power:
+    name: pv power
+    min: 0
+    max: 20000
+    step: 1
+    mode: box
+    initial: 0
+  wallbox_power:
+    name: wallbox power
+    min: 0
+    max: 22000
+    step: 1
+    mode: box
+    initial: 0
+
+input_select:
+  bat1_force_mode:
+    name: bat1 force mode
+    options:
+      - idle
+      - charge
+      - discharge
+      - standby
+    initial: idle
+
+input_boolean:
+  bat1_rs485_control_mode:
+    name: bat1 rs485 control mode
+    initial: true
+  wallbox_cable:
+    name: wallbox cable
+    initial: false
+
+# Template entities with the exact entity_ids expected by the integration.
+#
+# Config flow expects (for base="bat1"):
+# - sensor.bat1_ac_power
+# - sensor.bat1_soc
+# - number.bat1_modbus_set_forcible_charge_power
+# - number.bat1_modbus_set_forcible_discharge_power
+# - select.bat1_modbus_force_mode
+# - switch.bat1_modbus_rs485_control_mode
+#
+# Runtime code also uses:
+# - sensor.bat1_battery_soc
+
+template:
+  - sensor:
+      - name: bat1 ac power
+        unique_id: bat1_ac_power
+        unit_of_measurement: W
+        state: "{{ states('input_number.bat1_ac_power') }}"
+
+      - name: bat1 soc
+        unique_id: bat1_soc
+        unit_of_measurement: "%"
+        state: "{{ states('input_number.bat1_soc') }}"
+
+      - name: bat1 battery soc
+        unique_id: bat1_battery_soc
+        unit_of_measurement: "%"
+        state: "{{ states('input_number.bat1_soc') }}"
+
+      - name: grid power
+        unique_id: grid_power
+        unit_of_measurement: W
+        state: "{{ states('input_number.grid_power') }}"
+
+      - name: pv power
+        unique_id: pv_power
+        unit_of_measurement: W
+        state: "{{ states('input_number.pv_power') }}"
+
+      - name: wallbox power
+        unique_id: wallbox_power
+        unit_of_measurement: W
+        state: "{{ states('input_number.wallbox_power') }}"
+
+  - binary_sensor:
+      - name: wallbox cable
+        unique_id: wallbox_cable
+        state: "{{ is_state('input_boolean.wallbox_cable', 'on') }}"
+
+  - number:
+      - name: bat1 modbus set forcible charge power
+        unique_id: bat1_modbus_set_forcible_charge_power
+        min: 0
+        max: 2500
+        step: 1
+        unit_of_measurement: W
+        state: "{{ states('input_number.bat1_charge_power') | float(0) }}"
+        set_value:
+          - service: input_number.set_value
+            target:
+              entity_id: input_number.bat1_charge_power
+            data:
+              value: "{{ value }}"
+
+      - name: bat1 modbus set forcible discharge power
+        unique_id: bat1_modbus_set_forcible_discharge_power
+        min: 0
+        max: 2500
+        step: 1
+        unit_of_measurement: W
+        state: "{{ states('input_number.bat1_discharge_power') | float(0) }}"
+        set_value:
+          - service: input_number.set_value
+            target:
+              entity_id: input_number.bat1_discharge_power
+            data:
+              value: "{{ value }}"
+
+  - select:
+      - name: bat1 modbus force mode
+        unique_id: bat1_modbus_force_mode
+        state: "{{ states('input_select.bat1_force_mode') }}"
+        options: "{{ state_attr('input_select.bat1_force_mode', 'options') }}"
+        select_option:
+          - service: input_select.select_option
+            target:
+              entity_id: input_select.bat1_force_mode
+            data:
+              option: "{{ option }}"
+
+switch:
+  - platform: template
+    switches:
+      bat1_modbus_rs485_control_mode:
+        value_template: "{{ is_state('input_boolean.bat1_rs485_control_mode', 'on') }}"
+        turn_on:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.bat1_rs485_control_mode
+        turn_off:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.bat1_rs485_control_mode
+
+# Give the template entities the exact entity_ids expected by the integration.
+# (HA uses object_id from name; these overrides ensure stable IDs.)
+homeassistant:
+  customize:
+    sensor.bat1_ac_power:
+      friendly_name: bat1 ac power
+    sensor.bat1_soc:
+      friendly_name: bat1 soc
+    sensor.bat1_battery_soc:
+      friendly_name: bat1 battery soc
+    sensor.grid_power:
+      friendly_name: grid power
+    sensor.pv_power:
+      friendly_name: pv power
+    sensor.wallbox_power:
+      friendly_name: wallbox power
+    binary_sensor.wallbox_cable:
+      friendly_name: wallbox cable
+    number.bat1_modbus_set_forcible_charge_power:
+      friendly_name: bat1 charge power
+    number.bat1_modbus_set_forcible_discharge_power:
+      friendly_name: bat1 discharge power
+    select.bat1_modbus_force_mode:
+      friendly_name: bat1 force mode
+    switch.bat1_modbus_rs485_control_mode:
+      friendly_name: bat1 rs485 control mode
