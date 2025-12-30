@@ -122,9 +122,11 @@ class MarstekCoordinator:
         self._battery_priority = []
         self._last_priority_update = datetime.min
         self._last_power_direction: PowerDir = PowerDir.NEUTRAL
+        self._last_grid_power_raw: float | None = None
         
         # Wallbox state
         self._wallbox_charge_paused = False
+        self._wallbox_wait_start: datetime | None = None
         self._wallbox_power_history = deque(maxlen=self._get_deque_size("wallbox"))
         self._last_wallbox_pause_attempt = datetime.min # For 60-minute cooldown
         self._wallbox_wait_start = None # Initialisiert: Timer für den Start-Delay
@@ -449,7 +451,7 @@ class MarstekCoordinator:
             
         if not self._is_running:
             self._service_call_cache.clear()
-            _LOGGER.debug("Running version 1.1.9")
+            _LOGGER.debug("Running version 1.1.10")
             _LOGGER.debug("Service call cache cleared on coordinator start")
             self._below_min_charge_count = 0
             self._below_min_discharge_count = 0
@@ -611,7 +613,13 @@ class MarstekCoordinator:
                 elif self._pid_suspend_direction == PowerDir.DISCHARGE:
                     should_resume = real_power > float(min_consumption_for_discharging)
 
-                if not should_resume:
+                opposite_direction_valid = False
+                if self._pid_suspend_direction == PowerDir.CHARGE:
+                    opposite_direction_valid = real_power > float(min_consumption_for_discharging)
+                elif self._pid_suspend_direction == PowerDir.DISCHARGE:
+                    opposite_direction_valid = real_power < -float(min_surplus_for_charging)
+
+                if not should_resume and not opposite_direction_valid:
                     # Keep batteries at 0 and keep PID state reset until load crosses the threshold again.
                     await self._set_all_batteries_to_zero()
                     return
@@ -795,9 +803,10 @@ class MarstekCoordinator:
         if not isinstance(grid_sensor_id, str) or not grid_sensor_id:
             return None
         current_power = self._get_float_state(grid_sensor_id)
-        
         if current_power is None:
             return None
+
+        self._last_grid_power_raw = current_power
             
         self._power_history.append(current_power)
         if not self._power_history:
@@ -1097,7 +1106,8 @@ class MarstekCoordinator:
             time_since_last_update > priority_interval
         ):
             # Check if enough time has passed since last update
-            if needs_initial_priority or time_since_last_update >= min_update_interval:
+            direction_changed = power_direction != self._last_power_direction
+            if direction_changed or needs_initial_priority or time_since_last_update >= min_update_interval:
                 _LOGGER.info(f"Recalculating battery priority. Reason: {'Power direction changed' if power_direction != self._last_power_direction else 'Time interval elapsed'}")
                 await self._calculate_battery_priority(power_direction)
                 self._last_power_direction = power_direction
@@ -1121,9 +1131,11 @@ class MarstekCoordinator:
             max_soc = float(DEFAULT_MAX_SOC)
         
         available_batteries = []
+        missing_soc: list[str] = []
         for base_entity_id in self._battery_entities:
             soc = self._get_float_state(f"sensor.{base_entity_id}_battery_soc")
             if soc is None:
+                missing_soc.append(base_entity_id)
                 continue
 
             if power_direction == PowerDir.CHARGE and soc < max_soc:
@@ -1134,6 +1146,8 @@ class MarstekCoordinator:
         is_reverse = (power_direction == PowerDir.DISCHARGE)
         self._battery_priority = sorted(available_batteries, key=lambda x: x['soc'], reverse=is_reverse)
         _LOGGER.debug(f"New battery priority: {self._battery_priority}")
+        if missing_soc:
+            _LOGGER.debug("Battery SoC unavailable for priority calculation: %s", missing_soc)
 
     def _get_desired_number_of_batteries(self, power: float) -> int:
         abs_power = abs(power)
@@ -1146,6 +1160,9 @@ class MarstekCoordinator:
             stage2 = self.config.get(CONF_POWER_STAGE_CHARGE_2)
         
         num_available = len(self._battery_priority)
+        if num_available == 0:
+            _LOGGER.debug("No available batteries in priority list. Returning 0 target batteries.")
+            return 0
         
         # 1. Ermittle die Anzahl der Batterien, die aktuell Leistung liefern/aufnehmen
         num_currently_active = 0
@@ -1219,7 +1236,8 @@ class MarstekCoordinator:
         if target_num_batteries > max_batt:
             target_num_batteries = max_batt
 
-        abs_power = abs(power)
+        requested_abs_power = abs(power)
+        abs_power = requested_abs_power
         max_discharge_power = self.config.get(CONF_MAX_DISCHARGE_POWER, 2500)
         max_charge_power = self.config.get(CONF_MAX_CHARGE_POWER, 2500)
 
@@ -1235,6 +1253,26 @@ class MarstekCoordinator:
                         round(pv_power, 0),
                     )
                 abs_power = min(abs_power, pv_power)
+
+        if self._last_power_direction == PowerDir.DISCHARGE:
+            if self._last_grid_power_raw is not None:
+                grid_import = max(0.0, float(self._last_grid_power_raw))
+                if abs_power > grid_import:
+                    _LOGGER.debug(
+                        "Grid import cap active. Requested discharge=%sW, grid_import=%sW -> capping to %sW",
+                        round(abs_power, 0),
+                        round(grid_import, 0),
+                        round(grid_import, 0),
+                    )
+                abs_power = min(abs_power, grid_import)
+
+        if abs_power != requested_abs_power:
+            _LOGGER.debug(
+                "Effective %s power after caps: requested=%sW -> effective=%sW",
+                self._last_power_direction.name,
+                round(requested_abs_power, 0),
+                round(abs_power, 0),
+            )
 
         min_surplus_for_chargin = self.config.get(CONF_MIN_SURPLUS, 50)
         min_consumption_for_discharging = self.config.get(CONF_MIN_CONSUMPTION, 50)
@@ -1364,8 +1402,9 @@ class MarstekCoordinator:
         active_battery_ids = [b["id"] for b in active_batteries]
 
         _LOGGER.debug(
-            "Distributing %sW to %s batteries: %s with %sW each.",
-            round(power, 0),
+            "Distributing %sW (%s requested) to %s batteries: %s with %sW each.",
+            round(abs_power, 0),
+            round(requested_abs_power, 0),
             len(active_battery_ids),
             active_battery_ids,
             power_per_battery,
