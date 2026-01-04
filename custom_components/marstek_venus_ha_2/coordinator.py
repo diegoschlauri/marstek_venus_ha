@@ -131,7 +131,7 @@ class MarstekCoordinator:
         self._last_wallbox_pause_attempt = datetime.min # For 60-minute cooldown
         self._wallbox_wait_start = None # Initialisiert: Timer für den Start-Delay
         self._wallbox_cable_was_on = False # Trackt den vorherigen Kabelzustand
-
+        self._last_wallbox_power = 0.0
         # CT-Mode state
         self._ct_mode = self.config.get(CONF_CT_MODE, False)
         self._wallbox_is_active = False  # Track if wallbox currently controls
@@ -380,7 +380,18 @@ class MarstekCoordinator:
             return
 
         try:
-            await self.hass.services.async_call(domain, service, service_data, blocking=blocking)
+            await asyncio.wait_for(
+                self.hass.services.async_call(domain, service, service_data, blocking=blocking),
+                timeout=15.0,
+            )
+        except asyncio.TimeoutError:
+            _LOGGER.warning(
+                "Service call %s.%s timed out for %s",
+                domain,
+                service,
+                entity_id,
+            )
+            return
         except Exception as err:
             _LOGGER.warning(
                 "Service call %s.%s failed for %s: %s",
@@ -548,8 +559,14 @@ class MarstekCoordinator:
     async def _run_update(self, reason: str) -> None:
         self._last_update_start = datetime.now()
         _LOGGER.debug("Coordinator update triggered (%s).", reason)
-        await self._async_update()
-        async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
+        try:
+            await asyncio.wait_for(self._async_update(), timeout=60.0)
+        except asyncio.TimeoutError:
+            _LOGGER.warning("Coordinator update timed out (%s).", reason)
+        except Exception as err:
+            _LOGGER.exception("Coordinator update failed (%s): %s", reason, err)
+        finally:
+            async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
 
     async def async_stop_listening(self):
         """Stop the coordinator's update loop."""
@@ -925,14 +942,15 @@ class MarstekCoordinator:
             
         wb_power = 0.0
         wb_power_state = self._get_entity_state(wb_power_sensor_id)
-        _LOGGER.debug(f"Wallbox power state: {wb_power_state.state if wb_power_state else 'N/A'}")
         if wb_power_state:
             try:
                 wb_power = float(wb_power_state.state)
                 unit = wb_power_state.attributes.get("unit_of_measurement")
                 if unit and unit.lower() == 'kw':
                     wb_power *= 1000
-                _LOGGER.debug(f"Wallbox power interpreted as: {wb_power}W")
+                if wb_power != self._last_wallbox_power:
+                    _LOGGER.debug(f"Wallbox power: {wb_power}W")
+                self._last_wallbox_power = wb_power
             except (ValueError, TypeError):
                 _LOGGER.warning(f"Could not parse state of '{wb_power_sensor}' as float: '{wb_power_state.state}'")
     
@@ -1007,7 +1025,7 @@ class MarstekCoordinator:
 
         # 3. Zustandsprüfung: Keine Ladepause aktiv. Prüfen, ob eine gestartet werden soll.
         else:
-            _LOGGER.debug("No wallbox pause active. Checking if conditions to start pause are met.")
+            #_LOGGER.debug("No wallbox pause active. Checking if conditions to start pause are met.")
             # Regel 2 (Start): Genug Überschuss UND Auto lädt nicht UND Cooldown abgelaufen? -> Pause starten
             if real_power < -max_surplus_w and wb_power <= 100:
                 now = datetime.now()
@@ -1254,17 +1272,41 @@ class MarstekCoordinator:
                     )
                 abs_power = min(abs_power, pv_power)
 
+# detect real battery to grid export by looking for negative grid import
+# allow some slack for grid import, but not too much
+# if too much just limit the requested discharge by the current grid export (new import)
         if self._last_power_direction == PowerDir.DISCHARGE:
             if self._last_grid_power_raw is not None:
-                grid_import = max(0.0, float(self._last_grid_power_raw))
-                if abs_power > grid_import:
+                try:
+                    grid_power = float(self._last_grid_power_raw)
+                except (TypeError, ValueError):
+                    grid_power = 0.0
+
+                battery_powers: dict[str, float | None] = {
+                    b: self._get_float_state(f"sensor.{b}_ac_power") for b in self._battery_entities
+                }
+                total_battery_power = sum(p for p in battery_powers.values() if p is not None)
+
+                grid_import = max(0.0, grid_power)
+                grid_export = max(0.0, -grid_power)
+
+                export_slack_w = 100.0
+                real_power = grid_power + total_battery_power
+                allowed_discharge = max(0.0, real_power + export_slack_w)
+
+                if grid_export > export_slack_w or abs_power > allowed_discharge:
+                    capped = min(abs_power, allowed_discharge)
                     _LOGGER.debug(
-                        "Grid import cap active. Requested discharge=%sW, grid_import=%sW -> capping to %sW",
+                        "Grid export prevention active. Requested discharge=%sW, grid_import=%sW, grid_export=%sW, batt_total=%sW, real=%sW, slack=%sW -> capping to %sW",
                         round(abs_power, 0),
                         round(grid_import, 0),
-                        round(grid_import, 0),
+                        round(grid_export, 0),
+                        round(total_battery_power, 0),
+                        round(real_power, 0),
+                        round(export_slack_w, 0),
+                        round(capped, 0),
                     )
-                abs_power = min(abs_power, grid_import)
+                    abs_power = capped
 
         if abs_power != requested_abs_power:
             _LOGGER.debug(
