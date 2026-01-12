@@ -1,6 +1,6 @@
 {
   "include": [
-    "custom_components/marstek_venus_ha_2"
+    "custom_components/marstek_venus_ha"
   ],
   "exclude": [
     "dev-instance/config",
@@ -10,7 +10,7 @@
     ".git"
   ],
   "ignore": [
-    "custom_components/marstek_venus_ha_2/config_flow.py"
+    "custom_components/marstek_venus_ha/config_flow.py"
   ],
   "typeCheckingMode": "basic",
   "reportMissingImports": false,

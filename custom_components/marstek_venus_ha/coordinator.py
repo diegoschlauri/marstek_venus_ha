@@ -90,6 +90,9 @@ class MarstekCoordinator:
         self.config = dict(entry.data)
         # ...und überschreibe sie mit den Werten aus dem Options-Flow.
         self.config.update(entry.options)
+        
+        # Load version from manifest
+        self._manifest_version = self._load_manifest_version()
 
         self._service_call_cache: dict[tuple[str, str, str, str], tuple[Any, datetime]] = {}
         self._service_call_cache_ttl_seconds = self.config.get(
@@ -148,6 +151,18 @@ class MarstekCoordinator:
                 self.config.get(CONF_BATTERY_3_ENTITY),
             ] if b
         ]
+
+    def _load_manifest_version(self) -> str:
+        """Load version from manifest.json file."""
+        try:
+            import json
+            manifest_path = __file__.replace("coordinator.py", "manifest.json")
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                manifest = json.load(f)
+                return manifest.get("version", "unknown")
+        except Exception as err:
+            _LOGGER.warning("Could not load manifest version: %s", err)
+            return "unknown"
 
     def _get_deque_size(self, mode: str):
         if mode == "smoothing":
@@ -462,7 +477,7 @@ class MarstekCoordinator:
             
         if not self._is_running:
             self._service_call_cache.clear()
-            _LOGGER.debug("Running version 1.1.10")
+            _LOGGER.debug(f"Running version {self._manifest_version}")
             _LOGGER.debug("Service call cache cleared on coordinator start")
             self._below_min_charge_count = 0
             self._below_min_discharge_count = 0
@@ -1005,8 +1020,8 @@ class MarstekCoordinator:
                         
             # Regel 4: Auto lädt nicht mehr seit X-Minuten -> Pause beenden
             if wb_power < 100:
-                if self._wallbox_wait_start == None:
-                    _LOGGER.info(f"Wallbox: start new start-delay timer.")
+                if self._wallbox_wait_start is None:
+                    _LOGGER.info("Wallbox: start new start-delay timer.")
                     now = datetime.now()
                     self._wallbox_wait_start = now        # Start-Delay-Timer (für den aktuellen Versuch) starten
                 elif self._wallbox_wait_start is not None:

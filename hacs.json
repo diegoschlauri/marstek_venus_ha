@@ -1,12 +1,12 @@
 {
-  "name": "Marstek Venus Homeassistant Control 2",
+  "name": "Marstek Venus Homeassistant Control",
   "config_flow": true,
-  "domains": ["marstek_venus_ha_2"],
+  "domains": ["marstek_venus_ha"],
   "homeassistant": "2025.11.3",
   "country": "DE",
   "render_readme": true,
   "render_hacs": true,
-  "issue_tracker": "https://github.com/sker65/marstek_venus_ha/issue",
-  "codeowners": ["@sker65"],
-  "image": "https://raw.githubusercontent.com/sker65/marstek_venus_ha/main/custom_components/marstek_venus_ha/icon.png"
+  "issue_tracker": "https://github.com/diegoschlauri/marstek_venus_ha/issues",
+  "codeowners": ["@sker65","@diegoschlauri"],
+  "image": "https://raw.githubusercontent.com/diegoschlauri/marstek_venus_ha/main/custom_components/marstek_venus_ha/icon.png"
 }

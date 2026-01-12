@@ -1,6 +1,6 @@
 """Constants for the Marstek Venus HA integration."""
 
-DOMAIN = "marstek_venus_ha_2"
+DOMAIN = "marstek_venus_ha"
 
 PLATFORMS: list[str] = ["sensor"]
 

@@ -1,11 +1,11 @@
 import asyncio
 
-from custom_components.marstek_venus_ha_2.coordinator import (
+from custom_components.marstek_venus_ha.coordinator import (
     BELOW_MIN_CYCLES_TO_ZERO,
     MarstekCoordinator,
     PowerDir,
 )
-from custom_components.marstek_venus_ha_2.const import (
+from custom_components.marstek_venus_ha.const import (
     CONF_MAX_CHARGE_POWER,
     CONF_MAX_DISCHARGE_POWER,
     CONF_MIN_CONSUMPTION,
@@ -47,7 +47,7 @@ def test_get_desired_number_of_batteries_charge_upshift_from_single():
     c._last_power_direction = PowerDir.CHARGE
 
     # No batteries currently active
-    c._get_float_state = lambda ent_id: 0.0
+    c._get_float_state = lambda entity_id: 0.0
 
     assert c._get_desired_number_of_batteries(1700) == 1
     assert c._get_desired_number_of_batteries(2000) == 2
@@ -66,8 +66,8 @@ def test_get_desired_number_of_batteries_discharge_hysteresis_hold_two():
     c._last_power_direction = PowerDir.DISCHARGE
 
     # Two batteries currently active (>
-    def _float_state(ent_id: str):
-        if ent_id in ("sensor.b1_ac_power", "sensor.b2_ac_power"):
+    def _float_state(entity_id: str):
+        if entity_id in ("sensor.b1_ac_power", "sensor.b2_ac_power"):
             return 50.0
         return 0.0
 

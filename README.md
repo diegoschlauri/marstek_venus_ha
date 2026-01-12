@@ -147,7 +147,7 @@ The coordinator update loop is **event-driven** (triggered by sensor updates). T
 
 Additionally, the integration registers a Home Assistant service to manually trigger an update cycle:
 
-* `marstek_venus_ha_2.trigger_update`
+* `marstek_venus_ha.trigger_update`
 
 Example automation:
 
@@ -158,7 +158,7 @@ trigger:
   - platform: state
     entity_id: sensor.power_meter_power
 action:
-  - service: marstek_venus_ha_2.trigger_update
+  - service: marstek_venus_ha.trigger_update
 ```
 
 ## How it works (in detail)

@@ -25,4 +25,4 @@ Then open Home Assistant:
 - The HA config folder (`dev-instance/config`) is not meant to be committed (see `.gitignore`).
 - If you want a clean HA state, stop the container and remove/reset the contents of `dev-instance/config`.
 
-- to test the config flow you need to create a few template sensors for pv power, battery soc, etc. and add them to the config. the given configuration.yaml should provide some initial setup to make the setup flow work with battery prefix: "bat1". you can directly start here http://localhost:8123/config/integrations/integration/marstek_venus_ha_2
+- to test the config flow you need to create a few template sensors for pv power, battery soc, etc. and add them to the config. the given configuration.yaml should provide some initial setup to make the setup flow work with battery prefix: "bat1". you can directly start here http://localhost:8123/config/integrations/integration/marstek_venus_ha
