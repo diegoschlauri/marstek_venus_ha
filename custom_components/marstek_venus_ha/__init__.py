@@ -12,6 +12,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
     coordinator = MarstekCoordinator(hass, entry)
+    await coordinator.async_load_manifest_version()
     await coordinator.async_start_listening()
 
     hass.data[DOMAIN][entry.entry_id] = coordinator

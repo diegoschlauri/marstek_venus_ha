@@ -91,8 +91,8 @@ class MarstekCoordinator:
         # ...und überschreibe sie mit den Werten aus dem Options-Flow.
         self.config.update(entry.options)
         
-        # Load version from manifest
-        self._manifest_version = self._load_manifest_version()
+        # Version will be loaded asynchronously
+        self._manifest_version = "unknown"
 
         self._service_call_cache: dict[tuple[str, str, str, str], tuple[Any, datetime]] = {}
         self._service_call_cache_ttl_seconds = self.config.get(
@@ -152,17 +152,21 @@ class MarstekCoordinator:
             ] if b
         ]
 
-    def _load_manifest_version(self) -> str:
-        """Load version from manifest.json file."""
+    async def async_load_manifest_version(self) -> None:
+        """Load version from manifest.json file asynchronously."""
         try:
             import json
             manifest_path = __file__.replace("coordinator.py", "manifest.json")
-            with open(manifest_path, "r", encoding="utf-8") as f:
-                manifest = json.load(f)
-                return manifest.get("version", "unknown")
+            
+            def _load_sync() -> str:
+                with open(manifest_path, "r", encoding="utf-8") as f:
+                    manifest = json.load(f)
+                    return manifest.get("version", "unknown")
+            
+            self._manifest_version = await asyncio.to_thread(_load_sync)
         except Exception as err:
             _LOGGER.warning("Could not load manifest version: %s", err)
-            return "unknown"
+            self._manifest_version = "unknown"
 
     def _get_deque_size(self, mode: str):
         if mode == "smoothing":
@@ -1553,8 +1557,8 @@ class MarstekCoordinator:
                     "select_option",
                     force_mode,
                     "option",
-                    "standby",
-                    {"entity_id": force_mode, "option": "standby"},
+                    "stop",
+                    {"entity_id": force_mode, "option": "stop"},
                     blocking=True,
                 )
 
