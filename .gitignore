@@ -1,0 +1,4 @@
+dev-instance/config
+logfile*.txt
+*.pyc
+__pycache__

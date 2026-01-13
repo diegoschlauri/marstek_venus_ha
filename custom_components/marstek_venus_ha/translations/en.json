@@ -1,0 +1,135 @@
+{
+  "config": {
+    "error": {
+      "missing_battery_entities": "Some expected battery entities were not found."
+    },
+    "step": {
+      "user": {
+        "title": "Marstek Venus",
+        "description": "Configure sensors and basic behavior.",
+        "data": {
+          "ct_mode": "CT clamp mode",
+          "grid_power_sensor": "Grid power sensor",
+          "pv_power_sensor": "PV power sensor (optional)",
+          "smoothing_seconds": "Smoothing window (seconds)",
+          "coordinator_update_interval_seconds": "Minimum update interval (seconds)",
+          "service_call_cache_seconds": "Service call cache time-to-live (seconds)"
+        }
+      },
+      "batteries": {
+        "title": "Batteries",
+        "description": "Configure your batteries and power limits.\n\nIf the integration cannot find the expected entities for the battery prefix, it will show them here: {missing}",
+        "data": {
+          "battery_1_entity": "Battery 1 device/entity",
+          "battery_2_entity": "Battery 2 device/entity (optional)",
+          "battery_3_entity": "Battery 3 device/entity (optional)",
+          "min_soc": "Minimum state of charge (%)",
+          "max_soc": "Maximum state of charge (%)",
+          "max_discharge_power": "Maximum discharge power (W)",
+          "max_charge_power": "Maximum charge power (W)",
+          "min_surplus": "Minimum surplus for charging (W)",
+          "min_consumption": "Minimum consumption for discharging (W)",
+          "power_stage_discharge_1": "Discharge stage 1 power (W)",
+          "power_stage_discharge_2": "Discharge stage 2 power (W)",
+          "power_stage_charge_1": "Charge stage 1 power (W)",
+          "power_stage_charge_2": "Charge stage 2 power (W)",
+          "power_stage_offset": "Power stage offset (W)",
+          "priority_interval": "Battery priority rotation interval (seconds)"
+        }
+      },
+      "wallbox": {
+        "title": "Wallbox",
+        "description": "Optional wallbox integration.",
+        "data": {
+          "wallbox_power_sensor": "Wallbox power sensor (optional)",
+          "wallbox_cable_sensor": "Wallbox cable connected sensor (optional)",
+          "wallbox_max_surplus": "Maximum surplus for wallbox (W)",
+          "wallbox_power_stability_threshold": "Power stability threshold (W)",
+          "wallbox_resume_check_seconds": "Resume check interval (seconds)",
+          "wallbox_start_delay_seconds": "Start delay (seconds)",
+          "wallbox_retry_minutes": "Retry delay (minutes)"
+        }
+      },
+      "pid": {
+        "title": "PID control",
+        "description": "Optional PID mode to regulate grid power.",
+        "data": {
+          "pid_enabled": "Enable PID control",
+          "pid_kp": "PID Kp",
+          "pid_ki": "PID Ki",
+          "pid_kd": "PID Kd"
+        }
+      }
+    }
+  },
+  "options": {
+    "error": {
+      "missing_battery_entities": "Some expected battery entities were not found."
+    },
+    "step": {
+      "init": {
+        "title": "Marstek Venus options",
+        "description": "Update configuration.",
+        "menu_options": {
+          "all": "All (guided)",
+          "basic": "Basic",
+          "batteries": "Batteries",
+          "wallbox": "Wallbox",
+          "pid": "PID control"
+        },
+        "data": {
+          "ct_mode": "CT clamp mode",
+          "grid_power_sensor": "Grid power sensor",
+          "pv_power_sensor": "PV power sensor (optional)",
+          "smoothing_seconds": "Smoothing window (seconds)",
+          "coordinator_update_interval_seconds": "Minimum update interval (seconds)",
+          "service_call_cache_seconds": "Service call cache time-to-live (seconds)"
+        }
+      },
+      "batteries": {
+        "title": "Batteries",
+        "description": "Update battery configuration and limits.\n\nMissing entities: {missing}",
+        "data": {
+          "battery_1_entity": "Battery 1 device/entity",
+          "battery_2_entity": "Battery 2 device/entity (optional)",
+          "battery_3_entity": "Battery 3 device/entity (optional)",
+          "min_soc": "Minimum state of charge (%)",
+          "max_soc": "Maximum state of charge (%)",
+          "max_discharge_power": "Maximum discharge power (W)",
+          "max_charge_power": "Maximum charge power (W)",
+          "min_surplus": "Minimum surplus for charging (W)",
+          "min_consumption": "Minimum consumption for discharging (W)",
+          "power_stage_discharge_1": "Discharge stage 1 power (W)",
+          "power_stage_discharge_2": "Discharge stage 2 power (W)",
+          "power_stage_charge_1": "Charge stage 1 power (W)",
+          "power_stage_charge_2": "Charge stage 2 power (W)",
+          "power_stage_offset": "Power stage offset (W)",
+          "priority_interval": "Battery priority rotation interval (minutes)"
+        }
+      },
+      "wallbox": {
+        "title": "Wallbox",
+        "description": "Update wallbox settings.",
+        "data": {
+          "wallbox_power_sensor": "Wallbox power sensor (optional)",
+          "wallbox_cable_sensor": "Wallbox cable connected sensor (optional)",
+          "wallbox_max_surplus": "Maximum surplus for wallbox (W)",
+          "wallbox_power_stability_threshold": "Power stability threshold (W)",
+          "wallbox_resume_check_seconds": "Resume check interval (seconds)",
+          "wallbox_start_delay_seconds": "Start delay (seconds)",
+          "wallbox_retry_minutes": "Retry delay (minutes)"
+        }
+      },
+      "pid": {
+        "title": "PID control",
+        "description": "Update PID settings.",
+        "data": {
+          "pid_enabled": "Enable PID control",
+          "pid_kp": "PID Kp",
+          "pid_ki": "PID Ki",
+          "pid_kd": "PID Kd"
+        }
+      }
+    }
+  }
+}

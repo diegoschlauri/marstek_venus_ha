@@ -2,6 +2,10 @@
 
 DOMAIN = "marstek_venus_ha"
 
+PLATFORMS: list[str] = ["sensor"]
+
+SIGNAL_DIAGNOSTICS_UPDATED = f"{DOMAIN}_diagnostics_updated"
+
 # Configuration Keys
 CONF_CT_MODE = "ct_mode"
 CONF_GRID_POWER_SENSOR = "grid_power_sensor"
@@ -24,12 +28,18 @@ CONF_PRIORITY_INTERVAL = "priority_interval"
 CONF_WALLBOX_POWER_SENSOR = "wallbox_power_sensor"
 CONF_WALLBOX_MAX_SURPLUS = "wallbox_max_surplus"
 CONF_WALLBOX_CABLE_SENSOR = "wallbox_cable_sensor"
-CONF_WALLBOX_MAX_SURPLUS = "wallbox_max_surplus"
+CONF_PV_POWER_SENSOR = "pv_power_sensor"
 CONF_WALLBOX_POWER_STABILITY_THRESHOLD = "wallbox_power_stability_treshold"
 CONF_WALLBOX_RESUME_CHECK_SECONDS = "wallbox_resume_check_seconds"
 CONF_WALLBOX_START_DELAY_SECONDS = "wallbox_start_delay_seconds"
 CONF_WALLBOX_RETRY_MINUTES = "wallbox_retry_minutes"
 CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS = "coordinator_update_interval_seconds"
+CONF_SERVICE_CALL_CACHE_SECONDS = "service_call_cache_seconds"
+
+CONF_PID_ENABLED = "pid_enabled"
+CONF_PID_KP = "pid_kp"
+CONF_PID_KI = "pid_ki"
+CONF_PID_KD = "pid_kd"
 # Default values
 DEFAULT_CT_MODE = False
 DEFAULT_SMOOTHING_SECONDS = 0
@@ -51,3 +61,9 @@ DEFAULT_WALLBOX_RESUME_CHECK_SECONDS = 300
 DEFAULT_WALLBOX_START_DELAY_SECONDS = 120
 DEFAULT_WALLBOX_RETRY_MINUTES = 60
 DEFAULT_COORDINATOR_UPDATE_INTERVAL_SECONDS = 2
+DEFAULT_SERVICE_CALL_CACHE_SECONDS = 30
+
+DEFAULT_PID_ENABLED = False
+DEFAULT_PID_KP = 0.6
+DEFAULT_PID_KI = 0.02
+DEFAULT_PID_KD = 0.0
