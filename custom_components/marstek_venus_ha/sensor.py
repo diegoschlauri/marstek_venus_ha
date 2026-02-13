@@ -42,6 +42,12 @@ DIAGNOSTIC_SENSORS: tuple[DiagnosticSensorDescription, ...] = (
         has_entity_name=True,
     ),
     DiagnosticSensorDescription(
+        key="wallbox_power_is_stable",
+        name="Wallbox Power is stable",
+        value_fn=lambda c: c.wallbox_power_is_stable,
+        has_entity_name=True,
+    ),
+    DiagnosticSensorDescription(
         key="wallbox_wait_start",
         name="Wallbox Wait Start",
         value_fn=lambda c: c.wallbox_wait_start,
@@ -59,6 +65,13 @@ DIAGNOSTIC_SENSORS: tuple[DiagnosticSensorDescription, ...] = (
         key="wallbox_cooldown_end",
         name="Wallbox Cooldown End",
         value_fn=lambda c: c.wallbox_cooldown_end,
+        device_class=SensorDeviceClass.TIMESTAMP,
+        has_entity_name=True,
+    ),
+    DiagnosticSensorDescription(
+        key="wallbox_stabilization_start",
+        name="Wallbox Stabilization Start",
+        value_fn=lambda c: c.wallbox_stabilization_start,
         device_class=SensorDeviceClass.TIMESTAMP,
         has_entity_name=True,
     ),

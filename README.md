@@ -68,7 +68,7 @@ you cannot proceed if they are missing.
 
 ### Manual installation
 
-1.  Download the folder `custom_components/marstek_venus_ha_2` from this repository.
+1.  Download the folder `custom_components/marstek_venus_ha` from this repository.
 2.  Copy it into the `custom_components` directory of your Home Assistant installation.
 3.  Restart Home Assistant.
 

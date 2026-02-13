@@ -129,10 +129,13 @@ class MarstekCoordinator:
         
         # Wallbox state
         self._wallbox_charge_paused = False
+        self._wallbox_power_is_stable = False
         self._wallbox_wait_start: datetime | None = None
+        self._wallbox_stabilization_start: datetime | None = None
         self._wallbox_power_history = deque(maxlen=self._get_deque_size("wallbox"))
         self._last_wallbox_pause_attempt = datetime.min # For 60-minute cooldown
         self._wallbox_wait_start = None # Initialisiert: Timer für den Start-Delay
+        self._wallbox_stabilization_start = None # Initialisiert: Startzeitpunkt der Stabilisierung nach Start-Delay
         self._wallbox_cable_was_on = False # Trackt den vorherigen Kabelzustand
         self._last_wallbox_power = 0.0
         # CT-Mode state
@@ -217,6 +220,10 @@ class MarstekCoordinator:
         return bool(self._wallbox_charge_paused)
 
     @property
+    def wallbox_power_is_stable(self) -> bool:
+        return bool(self._wallbox_power_is_stable)
+    
+    @property
     def wallbox_wait_start_iso(self) -> str | None:
         value = self.wallbox_wait_start
         if value is None:
@@ -226,6 +233,17 @@ class MarstekCoordinator:
     @property
     def wallbox_wait_start(self) -> datetime | None:
         return self._as_aware_datetime(self._wallbox_wait_start)
+
+    @property
+    def wallbox_stabilization_start_iso(self) -> str | None:
+        value = self.wallbox_stabilization_start
+        if value is None:
+            return None
+        return value.isoformat()
+
+    @property
+    def wallbox_stabilization_start(self) -> datetime | None:
+        return self._as_aware_datetime(self._wallbox_stabilization_start)
 
     @property
     def battery_priority_ids(self) -> str:
@@ -975,6 +993,12 @@ class MarstekCoordinator:
     
         self._wallbox_power_history.append(wb_power)
 
+        # Calculate new power direction
+        if real_power < 0:
+            self._last_power_direction = PowerDir.CHARGE
+        elif real_power >= 0:
+            self._last_power_direction = PowerDir.DISCHARGE
+
         # 1. Höchste Priorität: Entladeschutz, wenn Wallbox aktiv ist
         if wb_power > 100 and self._last_power_direction == PowerDir.DISCHARGE:
             _LOGGER.debug("Wallbox is active, ensuring batteries do not discharge.")
@@ -1017,10 +1041,14 @@ class MarstekCoordinator:
                     _LOGGER.debug(f"Wallbox resume check: Min={min_power:.0f}W, Max={max_power:.0f}W, Spread={power_spread:.0f}W")
 
                     if power_spread < stability_threshold_w:
-                        _LOGGER.debug(f"Wallbox power has stabilized (Spread < {stability_treshold}W). Releasing batteries.")
+                        _LOGGER.debug(f"Wallbox power has stabilized (Spread < {stability_threshold_w}W). Releasing batteries.")
+                        self._wallbox_stabilization_start = datetime.now() # Stabilization-Timer starten (für den aktuellen Versuch)
+                        self._wallbox_power_is_stable = True
                         self._wallbox_charge_paused = False
-                        self._wallbox_power_history.clear()
                         return False
+                    else:
+                        _LOGGER.debug(f"Wallbox power not yet stable (Spread >= {stability_threshold_w}W). Keeping pause active.")
+                        self._wallbox_power_is_stable = False
                         
             # Regel 4: Auto lädt nicht mehr seit X-Minuten -> Pause beenden
             if wb_power < 100:
@@ -1039,6 +1067,7 @@ class MarstekCoordinator:
 
             # Keine Bedingung zum Beenden erfüllt -> Pause beibehalten
             _LOGGER.debug("Wallbox pause remains active. Batteries set to zero.")
+            self._wallbox_charge_paused = True
             await self._set_all_batteries_to_zero()
             return True
 
