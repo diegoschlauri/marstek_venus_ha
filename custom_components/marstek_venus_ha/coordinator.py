@@ -973,6 +973,8 @@ class MarstekCoordinator:
                 self._wallbox_wait_start = None
                 self._wallbox_cable_was_on = False
                 self._last_wallbox_pause_attempt = datetime.min # Reset cooldown on unplug
+                self._wallbox_power_is_stable = False # Reset Stabilitätsstatus, da Auto nicht geladen hat
+                self._wallbox_stabilization_start = None # Reset Stabilisierungstimer, da Auto nicht geladen hat
             return False
         
         self._wallbox_cable_was_on = True # Kabel ist jetzt eingesteckt
@@ -1022,9 +1024,11 @@ class MarstekCoordinator:
             # Regel 2 (Timeout): Auto hat nicht angefangen zu laden? -> Pause beenden
             if self._wallbox_wait_start is not None:
                 elapsed = (datetime.now() - self._wallbox_wait_start).total_seconds()
-                if elapsed > start_delay:
+                if elapsed > start_delay and wb_power <= 100:
                     _LOGGER.info(f"Wallbox did not start charging in {start_delay}s. Releasing batteries.")
                     self._wallbox_charge_paused = False
+                    self._wallbox_power_is_stable = False # Reset Stabilitätsstatus, da Auto nicht geladen hat
+                    self._wallbox_stabilization_start = None # Reset Stabilisierungstimer, da Auto nicht geladen hat
                     self._wallbox_power_history.clear()
                     self._wallbox_wait_start = None
                     return False
@@ -1049,6 +1053,7 @@ class MarstekCoordinator:
                     else:
                         _LOGGER.debug(f"Wallbox power not yet stable (Spread >= {stability_threshold_w}W). Keeping pause active.")
                         self._wallbox_power_is_stable = False
+                        self._wallbox_stabilization_start = None # Reset the stabilization timer zurücksetzen, da Leistung nicht stabil ist
                         
             # Regel 4: Auto lädt nicht mehr seit X-Minuten -> Pause beenden
             if wb_power < 100:
@@ -1068,6 +1073,8 @@ class MarstekCoordinator:
             # Keine Bedingung zum Beenden erfüllt -> Pause beibehalten
             _LOGGER.debug("Wallbox pause remains active. Batteries set to zero.")
             self._wallbox_charge_paused = True
+            self._wallbox_power_is_stable = False # Reset Stabilitätsstatus, da Pause beibehalten wird
+            self._wallbox_stabilization_start = None # Reset Stabilisierungstimer, da Pause beibehalten wird
             await self._set_all_batteries_to_zero()
             return True
 
@@ -1096,6 +1103,8 @@ class MarstekCoordinator:
                     self._last_wallbox_pause_attempt = now # Cooldown-Timer (für den nächsten Versuch) starten
                     self._wallbox_wait_start = now        # Start-Delay-Timer (für den aktuellen Versuch) starten
                     self._wallbox_charge_paused = True 
+                    self._wallbox_power_is_stable = False # Reset Stabilitätsstatus für den neuen Versuch
+                    self._wallbox_stabilization_start = None # Reset Stabilisierungstimer für den neuen Versuch
                     await self._set_all_batteries_to_zero() 
                     return True
                 # Regel 3 (WB Leistung erhöhen): Genug Überschuss UND Auto lädt UND Cooldown abgelaufen? -> Pause starten um Wallbox Prio zu geben
@@ -1119,7 +1128,9 @@ class MarstekCoordinator:
                          
                     self._last_wallbox_pause_attempt = now # Cooldown-Timer (für den nächsten Versuch) starten
                     self._wallbox_wait_start = now        # Start-Delay-Timer (für den aktuellen Versuch) starten
-                    self._wallbox_charge_paused = True 
+                    self._wallbox_charge_paused = True
+                    self._wallbox_power_is_stable = False # Reset Stabilitätsstatus für den neuen Versuch
+                    self._wallbox_stabilization_start = None # Reset Stabilisierungstimer für den neuen Versuch 
                     await self._set_all_batteries_to_zero() 
                     return True
                 else:
