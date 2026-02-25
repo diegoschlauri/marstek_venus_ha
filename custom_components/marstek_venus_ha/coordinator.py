@@ -610,11 +610,6 @@ class MarstekCoordinator:
         self._last_update_start = datetime.now()
         _LOGGER.debug("Coordinator update triggered (%s).", reason)
         try:
-            if reason == "switch_toggle":
-                # Reset for Batteries and Power Direction
-                self._last_power_direction = PowerDir.NEUTRAL
-                self._battery_priority = []
-                await asyncio.wait_for(self._set_all_batteries_to_zero(), timeout=30.0)
             await asyncio.wait_for(self._async_update(), timeout=60.0)
         except asyncio.TimeoutError:
             _LOGGER.warning("Coordinator update timed out (%s).", reason)

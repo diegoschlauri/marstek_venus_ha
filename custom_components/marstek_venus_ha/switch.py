@@ -3,7 +3,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import DeviceInfo
-from .coordinator import MarstekCoordinator
+from .coordinator import MarstekCoordinator, PowerDir
 from .const import DOMAIN, SIGNAL_DIAGNOSTICS_UPDATED
 
 
@@ -49,12 +49,16 @@ class ChargingSwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs):
         self._data._allow_charging = True
+        self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
+        self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
         self.async_write_ha_state()
         if hasattr(self._data, "async_request_update"):
             self.hass.async_create_task(self._data.async_request_update(reason="switch_toggle"))
 
     async def async_turn_off(self, **kwargs):
         self._data._allow_charging = False
+        self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
+        self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
         self.async_write_ha_state()
         if hasattr(self._data, "async_request_update"):
             self.hass.async_create_task(self._data.async_request_update(reason="switch_toggle"))
@@ -97,12 +101,16 @@ class DischargingSwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs):
         self._data._allow_discharging = True
+        self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
+        self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
         self.async_write_ha_state()
         if hasattr(self._data, "async_request_update"):
             self.hass.async_create_task(self._data.async_request_update(reason="switch_toggle"))
 
     async def async_turn_off(self, **kwargs):
         self._data._allow_discharging = False
+        self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
+        self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
         self.async_write_ha_state()
         if hasattr(self._data, "async_request_update"):
             self.hass.async_create_task(self._data.async_request_update(reason="switch_toggle"))
