@@ -16,7 +16,7 @@ class ChargingSwitch(SwitchEntity):
     def __init__(self, entry: ConfigEntry, data_object: MarstekCoordinator):
         self._entry = entry
         self._data = data_object
-        self._attr_name = "Charging Allowed"
+        self._attr_name = "Allow Charging"
         self._attr_unique_id = f"{entry.entry_id}_charging_switch"
 
     @property
@@ -64,7 +64,7 @@ class DischargingSwitch(SwitchEntity):
     def __init__(self, entry: ConfigEntry, data_object: MarstekCoordinator):
         self._entry = entry
         self._data = data_object
-        self._attr_name = "Discharging Allowed"
+        self._attr_name = "Allow Discharging"
         self._attr_unique_id = f"{entry.entry_id}_discharging_switch"
 
     @property
