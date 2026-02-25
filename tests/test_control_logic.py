@@ -1,7 +1,6 @@
 import asyncio
 
 from custom_components.marstek_venus_ha.coordinator import (
-    BELOW_MIN_CYCLES_TO_ZERO,
     MarstekCoordinator,
     PowerDir,
 )
@@ -10,6 +9,7 @@ from custom_components.marstek_venus_ha.const import (
     CONF_MAX_DISCHARGE_POWER,
     CONF_MIN_CONSUMPTION,
     CONF_MIN_SURPLUS,
+    CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING,
     CONF_POWER_STAGE_CHARGE_1,
     CONF_POWER_STAGE_CHARGE_2,
     CONF_POWER_STAGE_DISCHARGE_1,
@@ -25,6 +25,7 @@ def _mk_coordinator_for_control_logic(*, config: dict, battery_entities: list[st
     c._battery_priority = [{"id": b, "soc": 50.0} for b in battery_entities]
     c._below_min_charge_count = 0
     c._below_min_discharge_count = 0
+    c._below_min_cycles_to_zero = config.get(CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING, 10)
 
     async def _noop_async(*args, **kwargs):
         return None
@@ -94,6 +95,7 @@ def test_distribute_power_caps_per_battery_to_configured_max_charge_power():
             CONF_MAX_DISCHARGE_POWER: 2500,
             CONF_MIN_SURPLUS: 0,
             CONF_MIN_CONSUMPTION: 0,
+            CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING: 10,
         },
         battery_entities=["b1", "b2"],
     )
@@ -122,6 +124,7 @@ def test_distribute_power_below_min_threshold_only_zeros_after_n_cycles():
             CONF_MAX_DISCHARGE_POWER: 2500,
             CONF_MIN_SURPLUS: 200,
             CONF_MIN_CONSUMPTION: 200,
+            CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING: 10,
         },
         battery_entities=["b1"],
     )
@@ -138,11 +141,11 @@ def test_distribute_power_below_min_threshold_only_zeros_after_n_cycles():
     c._set_battery_power = _set_battery_power
 
     # Below threshold cycles should not trigger immediate zeroing
-    for _ in range(BELOW_MIN_CYCLES_TO_ZERO - 1):
+    for _ in range(c._below_min_cycles_to_zero - 1):
         asyncio.run(c._distribute_power(power=100.0, target_num_batteries=1))
 
     assert len(zero_calls) == 0
-    assert c._below_min_charge_count == BELOW_MIN_CYCLES_TO_ZERO - 1
+    assert c._below_min_charge_count == c._below_min_cycles_to_zero - 1
 
     # Next cycle should trigger zero and reset counter
     set_calls.clear()
@@ -160,6 +163,7 @@ def test_distribute_power_resets_below_min_counters_when_above_threshold():
             CONF_MAX_DISCHARGE_POWER: 2500,
             CONF_MIN_SURPLUS: 200,
             CONF_MIN_CONSUMPTION: 200,
+            CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING: 10,
         },
         battery_entities=["b1"],
     )

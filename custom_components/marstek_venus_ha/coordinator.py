@@ -20,6 +20,7 @@ from .const import (
     CONF_SMOOTHING_SECONDS,
     CONF_MIN_SURPLUS,
     CONF_MIN_CONSUMPTION,
+    CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING,
     CONF_BATTERY_1_ENTITY,
     CONF_BATTERY_2_ENTITY,
     CONF_BATTERY_3_ENTITY,
@@ -63,8 +64,6 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-BELOW_MIN_CYCLES_TO_ZERO = 10
 
 class PowerDir(IntEnum):
     NEUTRAL = 0
@@ -120,12 +119,18 @@ class MarstekCoordinator:
         self._update_lock = asyncio.Lock()
         self._last_update_start: datetime | None = None
 
+        # Default to allowing charging/discharging; can be overridden by switches
+        self._allow_charging = True
+        self._allow_discharging = True
+
         # State variables
         self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
         self._battery_priority = []
         self._last_priority_update = datetime.min
         self._last_power_direction: PowerDir = PowerDir.NEUTRAL
         self._last_grid_power_raw: float | None = None
+        self._below_min_cycles_to_zero = self.config.get(CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING, 10)
+
         
         # Wallbox state
         self._wallbox_charge_paused = False
@@ -1197,6 +1202,16 @@ class MarstekCoordinator:
         if power_direction == PowerDir.NEUTRAL:
             self._battery_priority = []
             return
+        
+        # If charging or discharging is not allowed, set priority to empty to prevent any battery from being used in that direction.
+        if self._allow_charging is False and power_direction == PowerDir.CHARGE:
+            self._battery_priority = []
+            _LOGGER.debug("Charging is disabled. Setting battery priority to empty for charging.")
+            return
+        if self._allow_discharging is False and power_direction == PowerDir.DISCHARGE:
+            self._battery_priority = []
+            _LOGGER.debug("Discharging is disabled. Setting battery priority to empty for discharging.")
+            return
 
         try:
             min_soc = float(self.config.get(CONF_MIN_SOC, DEFAULT_MIN_SOC) or DEFAULT_MIN_SOC)
@@ -1227,6 +1242,7 @@ class MarstekCoordinator:
             _LOGGER.debug("Battery SoC unavailable for priority calculation: %s", missing_soc)
 
     def _get_desired_number_of_batteries(self, power: float) -> int:
+        # Get the current allow_charging and allow_discharging states
         abs_power = abs(power)
         stage_offset = self.config.get(CONF_POWER_STAGE_OFFSET, 50)
         if self._last_power_direction == PowerDir.DISCHARGE: #Currently Discharging
@@ -1387,12 +1403,12 @@ class MarstekCoordinator:
                 round(abs_power, 0),
                 min_surplus_for_chargin,
                 self._below_min_charge_count,
-                BELOW_MIN_CYCLES_TO_ZERO,
+                self._below_min_cycles_to_zero,
             )
-            if self._below_min_charge_count >= BELOW_MIN_CYCLES_TO_ZERO:
+            if self._below_min_charge_count >= self._below_min_cycles_to_zero:
                 _LOGGER.debug(
                     "Charging power below minimum threshold for %s consecutive cycles. Setting all batteries to 0W.",
-                    BELOW_MIN_CYCLES_TO_ZERO,
+                    self._below_min_cycles_to_zero,
                 )
                 self._below_min_charge_count = 0
                 await self._set_all_batteries_to_zero()
@@ -1411,12 +1427,12 @@ class MarstekCoordinator:
                 round(abs_power, 0),
                 min_consumption_for_discharging,
                 self._below_min_discharge_count,
-                BELOW_MIN_CYCLES_TO_ZERO,
+                self._below_min_cycles_to_zero,
             )
-            if self._below_min_discharge_count >= BELOW_MIN_CYCLES_TO_ZERO:
+            if self._below_min_discharge_count >= self._below_min_cycles_to_zero:
                 _LOGGER.debug(
                     "Discharging power below minimum threshold for %s consecutive cycles. Setting all batteries to 0W.",
-                    BELOW_MIN_CYCLES_TO_ZERO,
+                    self._below_min_cycles_to_zero,
                 )
                 self._below_min_discharge_count = 0
                 await self._set_all_batteries_to_zero()

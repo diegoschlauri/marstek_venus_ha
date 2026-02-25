@@ -92,6 +92,7 @@ After installation you can add the integration via the Home Assistant UI:
 | **Power smoothing in seconds** | Time window (seconds) used to compute the average grid power. If set to 0, no smoothing is applied and the latest value is used. | `0` |
 | **Minimum surplus** | Minimum power surplus in watts required to start charging. | `200` |
 | **Minimum import** | Minimum consumption in watts required to start discharging. | `200` |
+| **Maximum import/surplus limit breaches** | Set the max of the counter for allowed surplus/import limit breaches. | `10` |
 | **First battery entity** | Base name of the entities for the first battery. | `marstek_l1` |
 | **Second battery entity (optional)** | Base name for the second battery. Leave empty if not available. | `marstek_l2` |
 | **Third battery entity (optional)** | Base name for the third battery. Leave empty if not available. | `marstek_l3` |
@@ -181,3 +182,24 @@ The absolute grid power (`abs(power)`) determines the number of active batteries
 * **Discharge protection**: As soon as the wallbox draws power (`Power > 10W`), discharging of **all** batteries is stopped immediately.
 * **Charging priority for the car**: If the **real PV surplus** (grid export + current battery charging power) exceeds the configured threshold, charging the home batteries is paused to prioritize the car.
 * **Intelligent charge resume**: Battery charging is released again when wallbox charging power stagnates for X seconds (e.g. because the car is full or has reached its maximum charging power). Discharging remains blocked as long as the wallbox is charging.
+
+### Switches
+
+The integration provides two switches to manually control the charging and discharging behavior:
+
+#### Charging Allowed
+- **Name**: `switch.*.charging_allowed`
+- **Purpose**: Allows you to manually enable or disable charging of the batteries.
+- **Default state**: Enabled (on)
+- **Effect**: When disabled (off), the integration will not command any charging power to the batteries, regardless of available PV surplus.
+
+#### Discharging Allowed
+- **Name**: `switch.*.discharging_allowed`
+- **Purpose**: Allows you to manually enable or disable discharging of the batteries.
+- **Default state**: Enabled (on)
+- **Effect**: When disabled (off), the integration will not command any discharging power from the batteries, even if there is grid import or high consumption.
+
+**Use cases:**
+- Temporarily prevent charging during high export prices
+- Temporarily prevent discharging to save battery capacity for evening self-consumption
+- Stop battery operation during maintenance or troubleshooting

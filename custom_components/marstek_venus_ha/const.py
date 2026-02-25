@@ -2,7 +2,7 @@
 
 DOMAIN = "marstek_venus_ha"
 
-PLATFORMS: list[str] = ["sensor"]
+PLATFORMS: list[str] = ["sensor", "switch"]
 
 SIGNAL_DIAGNOSTICS_UPDATED = f"{DOMAIN}_diagnostics_updated"
 
@@ -10,8 +10,13 @@ SIGNAL_DIAGNOSTICS_UPDATED = f"{DOMAIN}_diagnostics_updated"
 CONF_CT_MODE = "ct_mode"
 CONF_GRID_POWER_SENSOR = "grid_power_sensor"
 CONF_SMOOTHING_SECONDS = "smoothing_seconds"
+CONF_ALLOW_CHARGING_FROM = "allow_charging_from"
+CONF_ALLOW_CHARGING_TO = "allow_charging_to"
+CONF_ALLOW_DISCHARGING_FROM = "allow_discharging_from"
+CONF_ALLOW_DISCHARGING_TO = "allow_discharging_to"
 CONF_MIN_SURPLUS = "min_surplus"
 CONF_MIN_CONSUMPTION = "min_consumption"
+CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING = "max_limit_breaches_before_zeroing"
 CONF_BATTERY_1_ENTITY = "battery_1_entity"
 CONF_BATTERY_2_ENTITY = "battery_2_entity"
 CONF_BATTERY_3_ENTITY = "battery_3_entity"
@@ -43,8 +48,13 @@ CONF_PID_KD = "pid_kd"
 # Default values
 DEFAULT_CT_MODE = False
 DEFAULT_SMOOTHING_SECONDS = 0
+DEFAULT_ALLOW_CHARGING_FROM = "00:00"
+DEFAULT_ALLOW_CHARGING_TO = "24:00"
+DEFAULT_ALLOW_DISCHARGING_FROM = "00:00"
+DEFAULT_ALLOW_DISCHARGING_TO = "24:00"
 DEFAULT_MIN_SURPLUS = 200
 DEFAULT_MIN_CONSUMPTION = 200
+DEFAULT_MAX_LIMIT_BREACHES_BEFORE_ZEROING = 10
 DEFAULT_MIN_SOC = 12
 DEFAULT_MAX_SOC = 100
 DEFAULT_MAX_DISCHARGE_POWER = 2500

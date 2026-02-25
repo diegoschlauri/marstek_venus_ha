@@ -8,7 +8,7 @@
         "title": "Marstek Venus",
         "description": "Sensoren und grundlegendes Verhalten konfigurieren.",
         "data": {
-          "ct_mode": "CT-Zangenmodus",
+          "ct_mode": "Marstek CT-Strommesser Modus",
           "grid_power_sensor": "Netzleistungs-Sensor",
           "pv_power_sensor": "PV-Leistungs-Sensor (optional)",
           "smoothing_seconds": "Glättungsfenster (Sekunden)",
@@ -29,6 +29,7 @@
           "max_charge_power": "Max. Ladeleistung (W)",
           "min_surplus": "Minimaler Überschuss zum Laden (W)",
           "min_consumption": "Minimaler Verbrauch zum Entladen (W)",
+          "max_limit_breaches_before_zeroing": "Max. Anzahl aufeinanderfolgender Zyklen unterhalb der Mindestgrenze bevor auf 0W gesetzt wird",
           "power_stage_discharge_1": "Entlade-Stufe 1 Leistung (W)",
           "power_stage_discharge_2": "Entlade-Stufe 2 Leistung (W)",
           "power_stage_charge_1": "Lade-Stufe 1 Leistung (W)",
@@ -78,7 +79,7 @@
           "pid": "PID-Regelung"
         },
         "data": {
-          "ct_mode": "CT-Zangenmodus",
+          "ct_mode": "Marstek CT-Strommesser Modus",
           "grid_power_sensor": "Netzleistungs-Sensor",
           "pv_power_sensor": "PV-Leistungs-Sensor (optional)",
           "smoothing_seconds": "Glättungsfenster (Sekunden)",
@@ -88,7 +89,7 @@
       },
       "batteries": {
         "title": "Batterien",
-        "description": "Batteriekonfiguration und Grenzen aktualisieren.\n\nFehlende Entities: {missing}",
+        "description": "Batterien und Leistungsgrenzen anpassen.\n\nWenn die Integration die erwarteten Entities für das Batterie-Präfix nicht findet, werden sie hier angezeigt: {missing}",
         "data": {
           "battery_1_entity": "Batterie 1 Gerät/Entity",
           "battery_2_entity": "Batterie 2 Gerät/Entity (optional)",
@@ -99,6 +100,7 @@
           "max_charge_power": "Max. Ladeleistung (W)",
           "min_surplus": "Minimaler Überschuss zum Laden (W)",
           "min_consumption": "Minimaler Verbrauch zum Entladen (W)",
+          "max_limit_breaches_before_zeroing": "Max. Anzahl aufeinanderfolgender Zyklen unterhalb der Mindestgrenze bevor auf 0W gesetzt wird",
           "power_stage_discharge_1": "Entlade-Stufe 1 Leistung (W)",
           "power_stage_discharge_2": "Entlade-Stufe 2 Leistung (W)",
           "power_stage_charge_1": "Lade-Stufe 1 Leistung (W)",

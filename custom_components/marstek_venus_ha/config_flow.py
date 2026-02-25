@@ -12,6 +12,7 @@ from .const import (
     CONF_SMOOTHING_SECONDS,
     CONF_MIN_SURPLUS,
     CONF_MIN_CONSUMPTION,
+    CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING,
     CONF_BATTERY_1_ENTITY,
     CONF_BATTERY_2_ENTITY,
     CONF_BATTERY_3_ENTITY,
@@ -42,6 +43,7 @@ from .const import (
     DEFAULT_SMOOTHING_SECONDS,
     DEFAULT_MIN_SURPLUS,
     DEFAULT_MIN_CONSUMPTION,
+    DEFAULT_MAX_LIMIT_BREACHES_BEFORE_ZEROING,
     DEFAULT_MIN_SOC,
     DEFAULT_MAX_SOC,
     DEFAULT_MAX_DISCHARGE_POWER,
@@ -129,6 +131,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_MAX_CHARGE_POWER, default=DEFAULT_MAX_CHARGE_POWER): int,
                 vol.Required(CONF_MIN_SURPLUS, default=DEFAULT_MIN_SURPLUS): int,
                 vol.Required(CONF_MIN_CONSUMPTION, default=DEFAULT_MIN_CONSUMPTION): int,
+                vol.Required(CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING, default=DEFAULT_MAX_LIMIT_BREACHES_BEFORE_ZEROING): int,
                 vol.Required(
                     CONF_POWER_STAGE_DISCHARGE_1,
                     default=DEFAULT_POWER_STAGE_DISCHARGE_1,
@@ -327,7 +330,7 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                             DEFAULT_SERVICE_CALL_CACHE_SECONDS,
                         ),
                     ),
-                ): int,
+                ): int
             }
         )
 
@@ -413,6 +416,13 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                     default=self._options.get(
                         CONF_MIN_CONSUMPTION,
                         self.config_entry.data.get(CONF_MIN_CONSUMPTION, DEFAULT_MIN_CONSUMPTION),
+                    ),
+                ): int,
+                vol.Required(
+                    CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING,
+                    default=self._options.get(
+                        CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING,
+                        self.config_entry.data.get(CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING, DEFAULT_MAX_LIMIT_BREACHES_BEFORE_ZEROING),
                     ),
                 ): int,
                 vol.Required(
