@@ -1,7 +1,7 @@
 {
   "domain": "marstek_venus_ha",
   "name": "Marstek Venus Homeassistant Controll",
-  "version": "1.2.0",
+  "version": "1.2.2",
   "documentation": "https://github.com/diegoschlauri/marstek_venus_ha",
   "issue_tracker": "https://github.com/diegoschlauri/marstek_venus_ha/issues",
   "codeowners": ["@sker65","@diegoschlauri"],

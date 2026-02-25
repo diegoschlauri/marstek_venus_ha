@@ -2,6 +2,7 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.entity import DeviceInfo
 from .coordinator import MarstekCoordinator
 from .const import DOMAIN, SIGNAL_DIAGNOSTICS_UPDATED
 
@@ -25,6 +26,13 @@ class ChargingSwitch(SwitchEntity):
     @property
     def is_on(self) -> bool:
         return bool(self._data._allow_charging)
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.entry_id)},
+            name="Marstek Venus HA",
+        )
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(
@@ -66,6 +74,13 @@ class DischargingSwitch(SwitchEntity):
     @property
     def is_on(self) -> bool:
         return bool(self._data._allow_discharging)
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.entry_id)},
+            name="Marstek Venus HA",
+        )
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(

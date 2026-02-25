@@ -194,6 +194,14 @@ class MarstekCoordinator:
         return self._is_running
 
     @property
+    def allow_charging(self) -> bool:
+        return self._allow_charging
+
+    @property
+    def allow_discharging(self) -> bool:
+        return self._allow_discharging
+
+    @property
     def ct_mode(self) -> bool:
         return bool(self._ct_mode)
 
