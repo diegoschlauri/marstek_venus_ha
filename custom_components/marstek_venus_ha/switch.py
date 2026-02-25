@@ -1,7 +1,7 @@
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
 from homeassistant.helpers.entity import DeviceInfo
 from .coordinator import MarstekCoordinator, PowerDir
 from .const import DOMAIN, SIGNAL_DIAGNOSTICS_UPDATED
@@ -52,6 +52,7 @@ class ChargingSwitch(SwitchEntity):
         self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
         self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
         self.async_write_ha_state()
+        async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
         if hasattr(self._data, "async_request_update"):
             self.hass.async_create_task(self._data.async_request_update(reason="switch_toggle"))
 
@@ -60,6 +61,7 @@ class ChargingSwitch(SwitchEntity):
         self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
         self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
         self.async_write_ha_state()
+        async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
         if hasattr(self._data, "async_request_update"):
             self.hass.async_create_task(self._data.async_request_update(reason="switch_toggle"))
 
@@ -104,6 +106,7 @@ class DischargingSwitch(SwitchEntity):
         self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
         self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
         self.async_write_ha_state()
+        async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
         if hasattr(self._data, "async_request_update"):
             self.hass.async_create_task(self._data.async_request_update(reason="switch_toggle"))
 
@@ -112,5 +115,6 @@ class DischargingSwitch(SwitchEntity):
         self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
         self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
         self.async_write_ha_state()
+        async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
         if hasattr(self._data, "async_request_update"):
             self.hass.async_create_task(self._data.async_request_update(reason="switch_toggle"))

@@ -1193,7 +1193,8 @@ class MarstekCoordinator:
 
         if (
             power_direction != self._last_power_direction or
-            time_since_last_update > priority_interval
+            time_since_last_update > priority_interval or
+            needs_initial_priority
         ):
             # Check if enough time has passed since last update
             direction_changed = power_direction != self._last_power_direction
