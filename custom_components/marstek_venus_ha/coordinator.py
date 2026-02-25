@@ -611,7 +611,10 @@ class MarstekCoordinator:
         _LOGGER.debug("Coordinator update triggered (%s).", reason)
         try:
             if reason == "switch_toggle":
-                await asyncio.wait_for(self._calculate_battery_priority(power_direction=self._last_power_direction), timeout=10.0)
+                # Reset for Batteries and Power Direction
+                self._last_power_direction = PowerDir.NEUTRAL
+                self._battery_priority = []
+                await asyncio.wait_for(self._set_all_batteries_to_zero(), timeout=30.0)
             await asyncio.wait_for(self._async_update(), timeout=60.0)
         except asyncio.TimeoutError:
             _LOGGER.warning("Coordinator update timed out (%s).", reason)
@@ -1206,7 +1209,6 @@ class MarstekCoordinator:
                 self._last_priority_update = datetime.now()
             else:
                 _LOGGER.debug(f"Priority update triggered but rate-limited. Will retry in {(min_update_interval - time_since_last_update).total_seconds():.0f}s")
-        return    
 
     async def _calculate_battery_priority(self, power_direction: PowerDir):
         """Calculate the sorted list of batteries based on SoC."""
@@ -1251,7 +1253,6 @@ class MarstekCoordinator:
         _LOGGER.debug(f"New battery priority: {self._battery_priority}")
         if missing_soc:
             _LOGGER.debug("Battery SoC unavailable for priority calculation: %s", missing_soc)
-        return
 
     def _get_desired_number_of_batteries(self, power: float) -> int:
         # Get the current allow_charging and allow_discharging states
