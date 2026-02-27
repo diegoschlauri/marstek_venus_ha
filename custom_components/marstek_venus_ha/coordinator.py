@@ -133,6 +133,7 @@ class MarstekCoordinator:
 
         
         # Wallbox state
+        self._wallbox_priority = True
         self._wallbox_charge_paused = False
         self._wallbox_power_is_stable = False
         self._wallbox_wait_start: datetime | None = None
@@ -235,6 +236,10 @@ class MarstekCoordinator:
     @property
     def wallbox_power_is_stable(self) -> bool:
         return bool(self._wallbox_power_is_stable)
+    
+    @property
+    def wallbox_cable_was_on(self) -> bool:
+        return bool(self._wallbox_cable_was_on)
     
     @property
     def wallbox_wait_start_iso(self) -> str | None:
@@ -1019,6 +1024,17 @@ class MarstekCoordinator:
             _LOGGER.debug("Wallbox is active, ensuring batteries do not discharge.")
             await self._set_all_batteries_to_zero()
             return True
+        
+        # Neue Wallbox Priority Switch Logik
+        if self._wallbox_priority is False:
+            _LOGGER.debug("Wallbox priority switch is OFF. Skipping wallbox logic.")
+            self._wallbox_charge_paused = False
+            self._wallbox_power_is_stable = False # Reset Stabilitätsstatus, da Priorität ausgeschaltet ist
+            self._wallbox_stabilization_start = None # Reset Stabilisierungstimer, da
+            self._wallbox_power_history.clear() # Clear history to avoid stale data if priority is re-enabled
+            self._last_wallbox_pause_attempt = datetime.min # Reset cooldown when priority is turned off
+            self._wallbox_wait_start = None # Reset wait timer when priority is turned off
+            return False
 
         # 2. Zustandsprüfung: Ist eine Ladepause für die Wallbox aktiv?
         if self._wallbox_charge_paused:

@@ -188,16 +188,22 @@ The absolute grid power (`abs(power)`) determines the number of active batteries
 The integration provides two switches to manually control the charging and discharging behavior:
 
 #### Charging Allowed
-- **Name**: `switch.*.charging_allowed`
+- **Name**: `switch.*._charging_switch`
 - **Purpose**: Allows you to manually enable or disable charging of the batteries.
 - **Default state**: Enabled (on)
 - **Effect**: When disabled (off), the integration will not command any charging power to the batteries, regardless of available PV surplus.
 
 #### Discharging Allowed
-- **Name**: `switch.*.discharging_allowed`
+- **Name**: `switch.*._discharging_switch`
 - **Purpose**: Allows you to manually enable or disable discharging of the batteries.
 - **Default state**: Enabled (on)
 - **Effect**: When disabled (off), the integration will not command any discharging power from the batteries, even if there is grid import or high consumption.
+
+#### Wallbox Priority
+- **Name**: `switch.*._wallbox_priority_switch`
+- **Purpose**: Allows you to enable or disable the wallbox charging priority logic.
+- **Default state**: Enabled (on)
+- **Effect**: When enabled (on), the integration prioritizes EV charging over battery charging—pausing battery charging when PV surplus exceeds the configured threshold to supply energy to the car. When disabled (off), all wallbox integration is bypassed and batteries charge/discharge normally based on grid power.
 
 **Use cases:**
 - Temporarily prevent charging during high export prices

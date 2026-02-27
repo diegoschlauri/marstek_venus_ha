@@ -48,6 +48,12 @@ DIAGNOSTIC_SENSORS: tuple[DiagnosticSensorDescription, ...] = (
         has_entity_name=True,
     ),
     DiagnosticSensorDescription(
+        key="wallbox_cable_plugged_in",
+        name="Wallbox Plugged In",
+        value_fn=lambda c: c.wallbox_cable_was_on,
+        has_entity_name=True,
+    ),
+    DiagnosticSensorDescription(
         key="wallbox_charge_paused",
         name="Wallbox Charge Paused",
         value_fn=lambda c: c.wallbox_charge_paused,
