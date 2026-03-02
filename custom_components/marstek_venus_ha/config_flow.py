@@ -125,6 +125,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_MIN_SOC, default=DEFAULT_MIN_SOC): int,
                 vol.Required(CONF_MAX_SOC, default=DEFAULT_MAX_SOC): int,
                 vol.Required(CONF_MAX_DISCHARGE_POWER, default=DEFAULT_MAX_DISCHARGE_POWER): int,
+                # ... (Rest des ConfigFlow Schemas bleibt gleich wie im Original)
                 vol.Required(CONF_MAX_CHARGE_POWER, default=DEFAULT_MAX_CHARGE_POWER): int,
                 vol.Required(CONF_MIN_SURPLUS, default=DEFAULT_MIN_SURPLUS): int,
                 vol.Required(CONF_MIN_CONSUMPTION, default=DEFAULT_MIN_CONSUMPTION): int,
@@ -139,10 +140,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
         return self.async_show_form(
-            step_id="batteries",
-            data_schema=data_schema,
-            errors=errors,
-            description_placeholders=placeholders,
+            step_id="batteries", data_schema=data_schema, errors=errors, description_placeholders=placeholders
         )
 
     def _validate_battery_entities(self, user_input: dict) -> list[str]:
@@ -190,20 +188,13 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_WALLBOX_RETRY_MINUTES, default=DEFAULT_WALLBOX_RETRY_MINUTES): int,
             }
         )
-
-        return self.async_show_form(
-            step_id="wallbox", data_schema=data_schema, errors=errors
-        )
+        return self.async_show_form(step_id="wallbox", data_schema=data_schema, errors=errors)
 
     async def async_step_pid(self, user_input=None):
         """PID configuration step."""
-        errors = {}
         if user_input is not None:
             self._data.update(user_input)
-            return self.async_create_entry(
-                title="Marstek Venus HA Integration",
-                data=self._data,
-            )
+            return self.async_create_entry(title="Marstek Venus HA Integration", data=self._data)
 
         data_schema = vol.Schema(
             {
@@ -213,11 +204,10 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_PID_KD, default=DEFAULT_PID_KD): vol.Coerce(float),
             }
         )
-        return self.async_show_form(step_id="pid", data_schema=data_schema, errors=errors)
+        return self.async_show_form(step_id="pid", data_schema=data_schema)
 
     @staticmethod
     def async_get_options_flow(config_entry):
-        """Get the options flow for this handler."""
         return MarstekOptionsFlowHandler()
 
 
@@ -229,7 +219,6 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
         self._all_mode: bool = False
 
     async def async_step_init(self, user_input=None):
-        """Manage the options."""
         self._options = dict(self.config_entry.options)
         self._all_mode = False
         return self.async_show_menu(
@@ -238,14 +227,16 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     async def async_step_all(self, user_input=None):
-        """Run through all option sections sequentially."""
         self._options = dict(self.config_entry.options)
         self._all_mode = True
         return await self.async_step_basic()
 
     async def async_step_basic(self, user_input=None):
-        """Basic sensor/general options."""
         if user_input is not None:
+            # PV Sensor explizit nullen wenn entfernt
+            if CONF_PV_POWER_SENSOR not in user_input:
+                user_input[CONF_PV_POWER_SENSOR] = None
+            
             self._options.update(user_input)
             if self._all_mode:
                 return await self.async_step_batteries()
@@ -264,7 +255,7 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_PV_POWER_SENSOR,
                     description={"suggested_value": self._options.get(CONF_PV_POWER_SENSOR, self.config_entry.data.get(CONF_PV_POWER_SENSOR))},
-                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor", allow_blank=True)),
                 vol.Required(
                     CONF_SMOOTHING_SECONDS,
                     default=self._options.get(CONF_SMOOTHING_SECONDS, self.config_entry.data.get(CONF_SMOOTHING_SECONDS, DEFAULT_SMOOTHING_SECONDS)),
@@ -282,10 +273,14 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(step_id="basic", data_schema=data_schema)
 
     async def async_step_batteries(self, user_input=None):
-        """Battery configuration step."""
         errors: dict = {}
         placeholders: dict[str, str] = {"missing": ""}
         if user_input is not None:
+            # Batterien explizit leeren wenn Feld gelöscht
+            for field in [CONF_BATTERY_2_ENTITY, CONF_BATTERY_3_ENTITY]:
+                if field not in user_input or user_input[field] is None:
+                    user_input[field] = ""
+
             missing = self._validate_battery_entities(user_input)
             if missing:
                 errors["base"] = "missing_battery_entities"
@@ -325,40 +320,26 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Required(CONF_PRIORITY_INTERVAL, default=self._options.get(CONF_PRIORITY_INTERVAL, self.config_entry.data.get(CONF_PRIORITY_INTERVAL, DEFAULT_PRIORITY_INTERVAL))): int,
             }
         )
-
-        return self.async_show_form(
-            step_id="batteries",
-            data_schema=data_schema,
-            errors=errors,
-            description_placeholders=placeholders,
-        )
+        return self.async_show_form(step_id="batteries", data_schema=data_schema, errors=errors, description_placeholders=placeholders)
 
     def _validate_battery_entities(self, user_input: dict) -> list[str]:
         missing: list[str] = []
-        base_ids = [
-            user_input.get(CONF_BATTERY_1_ENTITY),
-            user_input.get(CONF_BATTERY_2_ENTITY),
-            user_input.get(CONF_BATTERY_3_ENTITY),
-        ]
+        base_ids = [user_input.get(CONF_BATTERY_1_ENTITY), user_input.get(CONF_BATTERY_2_ENTITY), user_input.get(CONF_BATTERY_3_ENTITY)]
         base_ids = [b.strip() for b in base_ids if b and isinstance(b, str) and b.strip()]
-
         for base in base_ids:
-            expected = [
-                f"sensor.{base}_ac_power",
-                f"sensor.{base}_battery_soc",
-                f"number.{base}_modbus_set_forcible_charge_power",
-                f"number.{base}_modbus_set_forcible_discharge_power",
-                f"select.{base}_modbus_force_mode",
-                f"switch.{base}_modbus_rs485_control_mode",
-            ]
+            expected = [f"sensor.{base}_ac_power", f"sensor.{base}_battery_soc", f"number.{base}_modbus_set_forcible_charge_power", f"number.{base}_modbus_set_forcible_discharge_power", f"select.{base}_modbus_force_mode", f"switch.{base}_modbus_rs485_control_mode"]
             for ent_id in expected:
                 if self.hass.states.get(ent_id) is None:
                     missing.append(ent_id)
         return missing
 
     async def async_step_wallbox(self, user_input=None):
-        """Wallbox configuration step."""
         if user_input is not None:
+            # Wallbox Sensoren explizit nullen wenn entfernt
+            for field in [CONF_WALLBOX_POWER_SENSOR, CONF_WALLBOX_CABLE_SENSOR]:
+                if field not in user_input:
+                    user_input[field] = None
+            
             self._options.update(user_input)
             if self._all_mode:
                 return await self.async_step_pid()
@@ -369,11 +350,11 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_WALLBOX_POWER_SENSOR,
                     description={"suggested_value": self._options.get(CONF_WALLBOX_POWER_SENSOR, self.config_entry.data.get(CONF_WALLBOX_POWER_SENSOR))},
-                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor", allow_blank=True)),
                 vol.Optional(
                     CONF_WALLBOX_CABLE_SENSOR,
                     description={"suggested_value": self._options.get(CONF_WALLBOX_CABLE_SENSOR, self.config_entry.data.get(CONF_WALLBOX_CABLE_SENSOR))},
-                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="binary_sensor")),
+                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="binary_sensor", allow_blank=True)),
                 vol.Optional(
                     CONF_WALLBOX_MAX_SURPLUS,
                     default=self._options.get(CONF_WALLBOX_MAX_SURPLUS, self.config_entry.data.get(CONF_WALLBOX_MAX_SURPLUS, DEFAULT_WALLBOX_MAX_SURPLUS)),
@@ -399,29 +380,16 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(step_id="wallbox", data_schema=data_schema)
 
     async def async_step_pid(self, user_input=None):
-        """PID configuration step."""
         if user_input is not None:
             self._options.update(user_input)
             return self.async_create_entry(title="", data=self._options)
 
         data_schema = vol.Schema(
             {
-                vol.Required(
-                    CONF_PID_ENABLED,
-                    default=self._options.get(CONF_PID_ENABLED, self.config_entry.data.get(CONF_PID_ENABLED, DEFAULT_PID_ENABLED)),
-                ): bool,
-                vol.Required(
-                    CONF_PID_KP,
-                    default=self._options.get(CONF_PID_KP, self.config_entry.data.get(CONF_PID_KP, DEFAULT_PID_KP)),
-                ): vol.Coerce(float),
-                vol.Required(
-                    CONF_PID_KI,
-                    default=self._options.get(CONF_PID_KI, self.config_entry.data.get(CONF_PID_KI, DEFAULT_PID_KI)),
-                ): vol.Coerce(float),
-                vol.Required(
-                    CONF_PID_KD,
-                    default=self._options.get(CONF_PID_KD, self.config_entry.data.get(CONF_PID_KD, DEFAULT_PID_KD)),
-                ): vol.Coerce(float),
+                vol.Required(CONF_PID_ENABLED, default=self._options.get(CONF_PID_ENABLED, self.config_entry.data.get(CONF_PID_ENABLED, DEFAULT_PID_ENABLED))): bool,
+                vol.Required(CONF_PID_KP, default=self._options.get(CONF_PID_KP, self.config_entry.data.get(CONF_PID_KP, DEFAULT_PID_KP))): vol.Coerce(float),
+                vol.Required(CONF_PID_KI, default=self._options.get(CONF_PID_KI, self.config_entry.data.get(CONF_PID_KI, DEFAULT_PID_KI))): vol.Coerce(float),
+                vol.Required(CONF_PID_KD, default=self._options.get(CONF_PID_KD, self.config_entry.data.get(CONF_PID_KD, DEFAULT_PID_KD))): vol.Coerce(float),
             }
         )
         return self.async_show_form(step_id="pid", data_schema=data_schema)
