@@ -196,14 +196,14 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         data_schema = vol.Schema(
             {
                 vol.Optional(CONF_WALLBOX_POWER_SENSOR): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor")
+                    selector.EntitySelectorConfig(domain="sensor"), default=None
                 ),
                 vol.Optional(
                     CONF_WALLBOX_MAX_SURPLUS,
                     default=DEFAULT_WALLBOX_MAX_SURPLUS,
                 ): int,
                 vol.Optional(CONF_WALLBOX_CABLE_SENSOR): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="binary_sensor")
+                    selector.EntitySelectorConfig(domain="binary_sensor"), default=None
                 ),
                 vol.Optional(
                     CONF_WALLBOX_POWER_STABILITY_THRESHOLD,
@@ -525,14 +525,14 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_WALLBOX_POWER_SENSOR,
                     default=self._options.get(
                         CONF_WALLBOX_POWER_SENSOR,
-                        self.config_entry.data.get(CONF_WALLBOX_POWER_SENSOR),
+                        self.config_entry.data.get(CONF_WALLBOX_POWER_SENSOR, None),
                     ),
                 ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
                 vol.Optional(
                     CONF_WALLBOX_CABLE_SENSOR,
                     default=self._options.get(
                         CONF_WALLBOX_CABLE_SENSOR,
-                        self.config_entry.data.get(CONF_WALLBOX_CABLE_SENSOR),
+                        self.config_entry.data.get(CONF_WALLBOX_CABLE_SENSOR, None),
                     ),
                 ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="binary_sensor")

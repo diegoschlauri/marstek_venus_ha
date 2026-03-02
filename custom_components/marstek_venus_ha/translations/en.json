@@ -116,8 +116,8 @@
           "wallbox_power_sensor": "Wallbox power sensor (optional)",
           "wallbox_cable_sensor": "Wallbox cable connected sensor (optional)",
           "wallbox_max_surplus": "Maximum surplus for wallbox (W)",
-          "wallbox_power_stability_threshold": "Power stability threshold (W)",
-          "wallbox_resume_check_seconds": "Resume check interval (seconds)",
+          "wallbox_power_stability_treshold": "Power stability threshold (W)",
+          "wallbox_resume_check_seconds": "Length of wallbox power history for stability check (last x seconds)",
           "wallbox_start_delay_seconds": "Start delay (seconds)",
           "wallbox_retry_minutes": "Retry delay (minutes)"
         }
