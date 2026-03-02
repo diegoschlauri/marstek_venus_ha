@@ -4,7 +4,7 @@
       "missing_battery_entities": "Einige erwartete Batterie-Entities wurden nicht gefunden."
     },
     "step": {
-      "user": {
+      "basic": {
         "title": "Marstek Venus",
         "description": "Sensoren und grundlegendes Verhalten konfigurieren.",
         "data": {
@@ -77,7 +77,11 @@
           "batteries": "Batterien",
           "wallbox": "Wallbox",
           "pid": "PID-Regelung"
-        },
+        }
+      },
+      "basic": {
+        "title": "Basis-Einstellungen",
+        "description": "Basis-Einstellungen aktualisieren.",
         "data": {
           "ct_mode": "Marstek CT-Strommesser Modus",
           "grid_power_sensor": "Netzleistungs-Sensor",

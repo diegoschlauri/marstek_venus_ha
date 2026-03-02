@@ -72,7 +72,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    async def async_step_user(self, user_input=None):
+    async def async_step_basic(self, user_input=None):
         """Handle the initial step."""
         errors = {}
         if user_input is not None:
@@ -86,7 +86,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
                 vol.Optional(CONF_PV_POWER_SENSOR): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor")
+                    selector.EntitySelectorConfig(domain="sensor"), default=None
                 ),
                 vol.Required(CONF_SMOOTHING_SECONDS, default=DEFAULT_SMOOTHING_SECONDS): int,
                 vol.Required(
@@ -101,7 +101,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
         return self.async_show_form(
-            step_id="user", data_schema=data_schema, errors=errors
+            step_id="basic", data_schema=data_schema, errors=errors
         )
 
     async def async_step_batteries(self, user_input=None):
@@ -295,13 +295,23 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                     default=self._options.get(
                         CONF_GRID_POWER_SENSOR, self.config_entry.data.get(CONF_GRID_POWER_SENSOR)
                     ),
-                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor"),
+                    default=self._options.get(
+                        CONF_GRID_POWER_SENSOR, self.config_entry.data.get(CONF_GRID_POWER_SENSOR)
+                    ),
+                ),
                 vol.Optional(
                     CONF_PV_POWER_SENSOR,
                     default=self._options.get(
                         CONF_PV_POWER_SENSOR, self.config_entry.data.get(CONF_PV_POWER_SENSOR)
                     ),
-                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor"),
+                    default=self._options.get(
+                        CONF_PV_POWER_SENSOR, self.config_entry.data.get(CONF_PV_POWER_SENSOR)
+                    ),
+                ),
                 vol.Required(
                     CONF_SMOOTHING_SECONDS,
                     default=self._options.get(
@@ -527,7 +537,13 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_WALLBOX_POWER_SENSOR,
                         self.config_entry.data.get(CONF_WALLBOX_POWER_SENSOR, None),
                     ),
-                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor"),
+                    default=self._options.get(
+                        CONF_WALLBOX_POWER_SENSOR,
+                        self.config_entry.data.get(CONF_WALLBOX_POWER_SENSOR, None),
+                    ),
+                ),
                 vol.Optional(
                     CONF_WALLBOX_CABLE_SENSOR,
                     default=self._options.get(
@@ -535,7 +551,11 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                         self.config_entry.data.get(CONF_WALLBOX_CABLE_SENSOR, None),
                     ),
                 ): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="binary_sensor")
+                    selector.EntitySelectorConfig(domain="binary_sensor"),
+                    default=self._options.get(
+                        CONF_WALLBOX_CABLE_SENSOR,
+                        self.config_entry.data.get(CONF_WALLBOX_CABLE_SENSOR, None),
+                    ),
                 ),
                 vol.Optional(
                     CONF_WALLBOX_MAX_SURPLUS,

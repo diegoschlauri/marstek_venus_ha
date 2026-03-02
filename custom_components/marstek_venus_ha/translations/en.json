@@ -4,7 +4,7 @@
       "missing_battery_entities": "Some expected battery entities were not found."
     },
     "step": {
-      "user": {
+      "basic": {
         "title": "Marstek Venus",
         "description": "Configure sensors and basic behavior.",
         "data": {
@@ -77,7 +77,10 @@
           "batteries": "Batteries",
           "wallbox": "Wallbox",
           "pid": "PID control"
-        },
+        }},
+      "basic": {
+        "title": "Basic settings",
+        "description": "Update basic settings",
         "data": {
           "ct_mode": "CT clamp mode",
           "grid_power_sensor": "Grid power sensor",
