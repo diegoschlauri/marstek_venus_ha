@@ -139,6 +139,9 @@ class MarstekCoordinator:
         self._wallbox_wait_start: datetime | None = None
         self._wallbox_stabilization_start: datetime | None = None
         self._wallbox_power_history = deque(maxlen=self._get_deque_size("wallbox"))
+        self._wallbox_min_power: int = 0
+        self._wallbox_max_power: int = 0
+        self._wallbox_power_difference: int = 0
         self._last_wallbox_pause_attempt = datetime.min # For 60-minute cooldown
         self._wallbox_wait_start = None # Initialisiert: Timer für den Start-Delay
         self._wallbox_stabilization_start = None # Initialisiert: Startzeitpunkt der Stabilisierung nach Start-Delay
@@ -236,7 +239,19 @@ class MarstekCoordinator:
     @property
     def wallbox_power_is_stable(self) -> bool:
         return bool(self._wallbox_power_is_stable)
+
+    @property
+    def wallbox_min_power(self) -> int:
+        return self._wallbox_min_power
     
+    @property
+    def wallbox_max_power(self) -> int:
+        return self._wallbox_max_power
+
+    @property
+    def wallbox_power_difference(self) -> int:
+        return self._wallbox_power_difference
+
     @property
     def wallbox_cable_was_on(self) -> bool:
         return bool(self._wallbox_cable_was_on)
@@ -943,7 +958,7 @@ class MarstekCoordinator:
         wb_power_sensor = self.config.get(CONF_WALLBOX_POWER_SENSOR)
         wb_cable_sensor = self.config.get(CONF_WALLBOX_CABLE_SENSOR)
         max_surplus = self.config.get(CONF_WALLBOX_MAX_SURPLUS)
-        stability_treshold = self.config.get(CONF_WALLBOX_POWER_STABILITY_THRESHOLD)
+        stability_threshold = self.config.get(CONF_WALLBOX_POWER_STABILITY_THRESHOLD)
         try:
             start_delay = int(self.config.get(CONF_WALLBOX_START_DELAY_SECONDS, DEFAULT_WALLBOX_START_DELAY_SECONDS) or 0)
         except (TypeError, ValueError):
@@ -970,11 +985,11 @@ class MarstekCoordinator:
             _LOGGER.debug("Wallbox max_surplus invalid (%s). Skipping wallbox logic.", max_surplus)
             return False
 
-        if stability_treshold is None:
+        if stability_threshold is None:
             stability_threshold_w = float(DEFAULT_WALLBOX_POWER_STABILITY_THRESHOLD)
         else:
             try:
-                stability_threshold_w = float(cast(Any, stability_treshold))
+                stability_threshold_w = float(cast(Any, stability_threshold))
             except (TypeError, ValueError):
                 stability_threshold_w = float(DEFAULT_WALLBOX_POWER_STABILITY_THRESHOLD)
 
@@ -1032,6 +1047,10 @@ class MarstekCoordinator:
             self._wallbox_power_is_stable = False # Reset Stabilitätsstatus, da Priorität ausgeschaltet ist
             self._wallbox_stabilization_start = None # Reset Stabilisierungstimer, da
             self._wallbox_power_history.clear() # Clear history to avoid stale data if priority is re-enabled
+            # Reset min/max/threshold
+            self._wallbox_min_power = 0 
+            self._wallbox_max_power = 0
+            self._wallbox_power_difference = 0
             self._last_wallbox_pause_attempt = datetime.min # Reset cooldown when priority is turned off
             self._wallbox_wait_start = None # Reset wait timer when priority is turned off
             return False
@@ -1040,17 +1059,8 @@ class MarstekCoordinator:
         if self._wallbox_charge_paused:
             # JA, Pause ist aktiv. Prüfe Bedingungen, um die Pause zu BEENDEN.
             _LOGGER.debug("Wallbox pause is currently active. Checking conditions to end pause.")
-            # Regel 1.5: Überschuss weggefallen? -> -> Pause beenden (gilt nur, wenn das Auto nicht geladen hat)
-# to reactivate it, we need a delay of a few seconds before checking the real power
-# as the smoothed power is not updated immediately
-#            if (real_power >= -max_surplus_w) and (wb_power <= 100):
-#                _LOGGER.info(f"Surplus ({abs(real_power):.0f}W) is below threshold ({max_surplus}W). And Wallbox-Power ({wb_power}W) is below 100. Releasing batteries.")
-#                self._wallbox_charge_paused = False
-#                self._wallbox_power_history.clear()
-#                self._wallbox_wait_start = None
-#                return False
 
-            # Regel 2 (Timeout): Auto hat nicht angefangen zu laden? -> Pause beenden
+            # Regel (Timeout): Auto hat nicht angefangen zu laden? -> Pause beenden
             if self._wallbox_wait_start is not None:
                 elapsed = (datetime.now() - self._wallbox_wait_start).total_seconds()
                 if elapsed > start_delay and wb_power <= 100:
@@ -1059,17 +1069,24 @@ class MarstekCoordinator:
                     self._wallbox_power_is_stable = False # Reset Stabilitätsstatus, da Auto nicht geladen hat
                     self._wallbox_stabilization_start = None # Reset Stabilisierungstimer, da Auto nicht geladen hat
                     self._wallbox_power_history.clear()
+                    # Reset min/max/threshold
+                    self._wallbox_min_power = 0 
+                    self._wallbox_max_power = 0
+                    self._wallbox_power_difference = 0
                     self._wallbox_wait_start = None
                     return False
 
-            # Regel 3: Auto lädt, ist die Leistung stabil? -> Pause beenden
+            # Regel: Auto lädt, ist die Leistung stabil? -> Pause beenden
             if wb_power > 100:
                 self._wallbox_wait_start = None # Timer wird irrelevant, sobald das Auto lädt
                 if len(self._wallbox_power_history) == self._wallbox_power_history.maxlen:
                     # NEUE LOGIK: Prüfe die Spanne (Min/Max) der History
                     min_power = min(self._wallbox_power_history)
+                    self._wallbox_min_power = min_power # Für Debugging-Zwecke speichern
                     max_power = max(self._wallbox_power_history)
+                    self._wallbox_max_power = max_power # Für Debugging-Zwecke speichern
                     power_spread = max_power - min_power # Die Differenz zwischen Min und Max
+                    self._wallbox_power_threshold = power_spread # Für Debugging-Zwecke speichern
 
                     _LOGGER.debug(f"Wallbox resume check: Min={min_power:.0f}W, Max={max_power:.0f}W, Spread={power_spread:.0f}W")
 
@@ -1084,7 +1101,7 @@ class MarstekCoordinator:
                         self._wallbox_power_is_stable = False
                         self._wallbox_stabilization_start = None # Reset the stabilization timer zurücksetzen, da Leistung nicht stabil ist
                         
-            # Regel 4: Auto lädt nicht mehr seit X-Minuten -> Pause beenden
+            # Regel: Auto lädt nicht mehr seit X-Minuten -> Pause beenden
             if wb_power < 100:
                 if self._wallbox_wait_start is None:
                     _LOGGER.info("Wallbox: start new start-delay timer.")
@@ -1096,6 +1113,10 @@ class MarstekCoordinator:
                         _LOGGER.info(f"Wallbox did not start charging again in {start_delay}s. Releasing batteries.")
                         self._wallbox_charge_paused = False
                         self._wallbox_power_history.clear()
+                        # Reset min/max/threshold
+                        self._wallbox_min_power = 0 
+                        self._wallbox_max_power = 0
+                        self._wallbox_power_difference = 0
                         self._wallbox_wait_start = None
                         return False
 
@@ -1110,7 +1131,7 @@ class MarstekCoordinator:
         # 3. Zustandsprüfung: Keine Ladepause aktiv. Prüfen, ob eine gestartet werden soll.
         else:
             #_LOGGER.debug("No wallbox pause active. Checking if conditions to start pause are met.")
-            # Regel 2 (Start): Genug Überschuss UND Auto lädt nicht UND Cooldown abgelaufen? -> Pause starten
+            # Regel (Start): Genug Überschuss UND Auto lädt nicht UND Cooldown abgelaufen? -> Pause starten
             if real_power < -max_surplus_w and wb_power <= 100:
                 now = datetime.now()
                 time_since_last_attempt = (now - self._last_wallbox_pause_attempt).total_seconds()
@@ -1165,11 +1186,6 @@ class MarstekCoordinator:
                 else:
                     _LOGGER.debug(f"High surplus, but wallbox pause is on cooldown ({time_since_last_attempt:.0f}s / {retry_seconds}s).")
         
-        # In CT-Mode: Nur aktivieren, wenn Kabel eingesteckt ist
-        if self._ct_mode:
-            _LOGGER.debug("CT-Mode active. Wallbox logic allowed to control only when cable is plugged in.")
-            # Cable-Check ist bereits implementiert oben (returns False wenn cable_on=False)
-            
         # Kein Grund zur Intervention -> Normale Batterielogik ausführen lassen
         return False
 

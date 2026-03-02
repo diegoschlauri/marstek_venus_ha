@@ -116,7 +116,7 @@
           "wallbox_power_sensor": "Wallbox Leistungs-Sensor (optional)",
           "wallbox_cable_sensor": "Wallbox Kabel verbunden (Sensor, optional)",
           "wallbox_max_surplus": "Max. Überschuss für Wallbox (W)",
-          "wallbox_power_stability_treshold": "Schwellwert Leistungsstabilität (W)",
+          "wallbox_power_stability_threshold": "Schwellwert Leistungsstabilität (W)",
           "wallbox_resume_check_seconds": "Länge der Wallbox Power History für die Stabilitätskontrolle (letzte x Sekunden)",
           "wallbox_start_delay_seconds": "Startverzögerung (Sekunden)",
           "wallbox_retry_minutes": "Wiederholungsverzögerung (Minuten)"

@@ -55,7 +55,7 @@ DIAGNOSTIC_SENSORS: tuple[DiagnosticSensorDescription, ...] = (
     ),
     DiagnosticSensorDescription(
         key="wallbox_charge_paused",
-        name="Wallbox Charge Paused",
+        name="Wallbox: Batterie charging paused for carcharging",
         value_fn=lambda c: c.wallbox_charge_paused,
         has_entity_name=True,
     ),
@@ -63,6 +63,24 @@ DIAGNOSTIC_SENSORS: tuple[DiagnosticSensorDescription, ...] = (
         key="wallbox_power_is_stable",
         name="Wallbox Power is stable",
         value_fn=lambda c: c.wallbox_power_is_stable,
+        has_entity_name=True,
+    ),
+    DiagnosticSensorDescription(
+        key="wallbox_min_power",
+        name="Wallbox Min Power (Stability Check)",
+        value_fn=lambda c: c.wallbox_min_power,
+        has_entity_name=True,
+    ),
+    DiagnosticSensorDescription(
+        key="wallbox_max_power",
+        name="Wallbox Max Power (Stability Check)",
+        value_fn=lambda c: c.wallbox_max_power,
+        has_entity_name=True,
+    ),
+    DiagnosticSensorDescription(
+        key="wallbox_power_difference",
+        name="Wallbox Power Difference (Stability Check)",
+        value_fn=lambda c: c.wallbox_power_difference,
         has_entity_name=True,
     ),
     DiagnosticSensorDescription(
