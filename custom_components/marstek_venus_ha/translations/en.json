@@ -4,7 +4,7 @@
       "missing_battery_entities": "Some expected battery entities were not found."
     },
     "step": {
-      "basic": {
+      "user": {
         "title": "Marstek Venus",
         "description": "Configure sensors and basic behavior.",
         "data": {
