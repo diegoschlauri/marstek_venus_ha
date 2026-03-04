@@ -51,8 +51,10 @@ from .const import (
     DEFAULT_PRIORITY_INTERVAL,
     DEFAULT_SMOOTHING_SECONDS,
     DEFAULT_WALLBOX_POWER_STABILITY_THRESHOLD,
+    DEFAULT_WALLBOX_RESUME_CHECK_SECONDS,
     DEFAULT_WALLBOX_START_DELAY_SECONDS,
     DEFAULT_SERVICE_CALL_CACHE_SECONDS,
+    DEFAULT_COORDINATOR_UPDATE_INTERVAL_SECONDS,
     CONF_PID_ENABLED,
     CONF_PID_KP,
     CONF_PID_KI,
@@ -181,17 +183,41 @@ class MarstekCoordinator:
             self._manifest_version = "unknown"
 
     def _get_deque_size(self, mode: str):
+        # Previously we treated the configured seconds value as the number
+        # of samples for the deque. That means if the coordinator runs
+        # every 3s and the user configured 300, the deque kept 300 samples
+        # -> covering 900s in time. Instead, convert seconds -> samples
+        # using the coordinator update interval so maxlen equals the
+        # number of samples covering the requested time window.
         if mode == "smoothing":
             seconds = self.config.get(CONF_SMOOTHING_SECONDS, DEFAULT_SMOOTHING_SECONDS)
         elif mode == "wallbox":
-            seconds = self.config.get(CONF_WALLBOX_RESUME_CHECK_SECONDS)
+            seconds = self.config.get(CONF_WALLBOX_RESUME_CHECK_SECONDS, DEFAULT_WALLBOX_RESUME_CHECK_SECONDS)
         else:
             return 1
+
         try:
             seconds_int = int(seconds or 0)
         except (TypeError, ValueError):
             seconds_int = 0
-        return max(1, seconds_int)
+
+        try:
+            interval_seconds = int(
+                self.config.get(
+                    CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS,
+                    DEFAULT_COORDINATOR_UPDATE_INTERVAL_SECONDS,
+                )
+                or DEFAULT_COORDINATOR_UPDATE_INTERVAL_SECONDS
+            )
+        except (TypeError, ValueError):
+            interval_seconds = int(DEFAULT_COORDINATOR_UPDATE_INTERVAL_SECONDS)
+
+        if interval_seconds <= 0:
+            interval_seconds = 1
+
+        # Compute number of samples that cover the requested seconds (round up)
+        samples = max(1, (seconds_int + interval_seconds - 1) // interval_seconds)
+        return samples
 
     @property
     def is_running(self) -> bool:
@@ -1086,7 +1112,7 @@ class MarstekCoordinator:
                     max_power = max(self._wallbox_power_history)
                     self._wallbox_max_power = max_power # Für Debugging-Zwecke speichern
                     power_spread = max_power - min_power # Die Differenz zwischen Min und Max
-                    self._wallbox_power_threshold = power_spread # Für Debugging-Zwecke speichern
+                    self._wallbox_power_difference = power_spread # Für Debugging-Zwecke speichern
 
                     _LOGGER.debug(f"Wallbox resume check: Min={min_power:.0f}W, Max={max_power:.0f}W, Spread={power_spread:.0f}W")
 

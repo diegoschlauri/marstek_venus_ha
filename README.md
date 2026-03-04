@@ -107,7 +107,7 @@ After installation you can add the integration via the Home Assistant UI:
 | **Power level offset (W)** | Offset used to switch power levels with less toggling. | `100` |
 | **Priority evaluation interval (minutes)** | Interval at which battery priorities are re-evaluated. | `15` |
 | **Wallbox power sensor ID (optional)**| Sensor that measures wallbox charging power. | `sensor.wallbox_power` |
-| **Wallbox maximum surplus (W) (optional)**| If PV surplus exceeds this value, battery charging is paused. | `1500` |
+| **Wallbox minimum surplus (W) (optional)**| If PV surplus exceeds this value, battery charging is paused for car charging. | `1500` |
 | **Wallbox sensor for plugged-in cable (optional)**| A binary sensor (`on`/`off`) that indicates whether a charging cable is connected. | `binary_sensor.wallbox_cable_plugged_in` |
 | **Wallbox power fluctuation (W) for enabling battery charging (optional)**| Tolerance for wallbox power fluctuations. If wallbox power has not increased by more than this value over the last X seconds, battery charging is allowed again. | `200` |
 | **Wallbox update time for enabling battery charging in seconds (optional)**| Number of seconds until batteries are released for charging again if the power fluctuation threshold is not exceeded. | `300` |
