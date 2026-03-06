@@ -104,13 +104,15 @@ After installation you can add the integration via the Home Assistant UI:
 | **Second discharge power level (W)** | Grid import at which a third battery is enabled. | `1200` |
 | **First charge power level (W)** | Grid export at which a second battery is enabled. | `2000` |
 | **Second charge power level (W)** | Grid export at which a third battery is enabled. | `4000` |
-| **Power level offset (W)** | Offset used to switch power levels with less toggling. | `100` |
+| **Power level offset (W)** | Offset used to switch power levels with less toggling. | `300` |
 | **Priority evaluation interval (minutes)** | Interval at which battery priorities are re-evaluated. | `15` |
 | **Wallbox power sensor ID (optional)**| Sensor that measures wallbox charging power. | `sensor.wallbox_power` |
 | **Wallbox minimum surplus (W) (optional)**| If PV surplus exceeds this value, battery charging is paused for car charging. | `1500` |
 | **Wallbox sensor for plugged-in cable (optional)**| A binary sensor (`on`/`off`) that indicates whether a charging cable is connected. | `binary_sensor.wallbox_cable_plugged_in` |
-| **Wallbox power fluctuation (W) for enabling battery charging (optional)**| Tolerance for wallbox power fluctuations. If wallbox power has not increased by more than this value over the last X seconds, battery charging is allowed again. | `200` |
-| **Wallbox update time for enabling battery charging in seconds (optional)**| Number of seconds until batteries are released for charging again if the power fluctuation threshold is not exceeded. | `300` |
+| **Wallbox power fluctuation (W) for enabling battery charging (optional)**| Tolerance for wallbox power fluctuations. If wallbox power has not increased by more than this value over the last X seconds, battery charging is allowed again. | `100` |
+| **Wallbox free power for enabling battery charging (optional)**| Minimum of free power (grid export) in watts, which must be available to check for a stabilization of the wallbox over the duration X. | `500`|
+| **Wallbox duration of free power for enabling battery charging (optional)**| Number of seconds of the free power (grid export) in seconds, to check for a stabilization of the wallbox. | `30`|
+| **Wallbox duration for enabling battery charging in seconds (optional)**| Number of seconds until batteries are released for charging again if the power fluctuation threshold is not exceeded. | `300` |
 | **Wallbox start time in seconds (optional)**| Number of seconds to wait before releasing the batteries again. This is used when a car is plugged in but does not start charging. This value is also relevant for phase switching of the wallbox. | `120` |
 | **Wallbox retry in minutes (optional)**| If a wallbox session ends and the cable remains plugged in, after this number of minutes and with sufficient surplus (> wallbox surplus parameter), the batteries are paused for the wallbox start time to allow charging. | `60` |
 | **Coordinator update interval**| Minimum number of seconds between executions of the logic update cycle (throttle). The logic is triggered by sensor updates (event-driven). | `3` |

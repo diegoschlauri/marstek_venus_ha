@@ -46,7 +46,9 @@
           "wallbox_cable_sensor": "Wallbox Kabel verbunden (Sensor, optional)",
           "wallbox_max_surplus": "Minimaler Überschuss damit die Wallbox priorisiert wird (W)",
           "wallbox_power_stability_threshold": "Schwellwert Leistungsstabilität (W)",
-          "wallbox_resume_check_seconds": "Intervall Wiederaufnahmeprüfung (Sekunden)",
+          "wallbox_stability_min_power_gap": "Minimale freie Leistung für Wallbox-Stabilitätsprüfung (W)",
+          "wallbox_stability_min_gap_duration_seconds": "Minimale Dauer der freien Leistung für Wallbox-Stabilitätsprüfung (Sekunden)",
+          "wallbox_resume_check_seconds": "Länge der Wallbox Power History für die Stabilitätskontrolle (letzte x Sekunden)",
           "wallbox_start_delay_seconds": "Startverzögerung (Sekunden)",
           "wallbox_retry_minutes": "Wiederholungsverzögerung (Minuten)"
         }
@@ -121,6 +123,8 @@
           "wallbox_cable_sensor": "Wallbox Kabel verbunden (Sensor, optional)",
           "wallbox_max_surplus": "Minimaler Überschuss damit die Wallbox priorisiert wird (W)",
           "wallbox_power_stability_threshold": "Schwellwert Leistungsstabilität (W)",
+          "wallbox_stability_min_power_gap": "Minimale freie Leistung für Wallbox-Stabilitätsprüfung (W)",
+          "wallbox_stability_min_gap_duration_seconds": "Minimale Dauer der freien Leistung für Wallbox-Stabilitätsprüfung (Sekunden)",
           "wallbox_resume_check_seconds": "Länge der Wallbox Power History für die Stabilitätskontrolle (letzte x Sekunden)",
           "wallbox_start_delay_seconds": "Startverzögerung (Sekunden)",
           "wallbox_retry_minutes": "Wiederholungsverzögerung (Minuten)"

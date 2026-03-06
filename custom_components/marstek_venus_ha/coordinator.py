@@ -42,6 +42,8 @@ from .const import (
     CONF_WALLBOX_RESUME_CHECK_SECONDS,
     CONF_WALLBOX_START_DELAY_SECONDS,
     CONF_WALLBOX_RETRY_MINUTES,
+    CONF_WALLBOX_STABILITY_MIN_POWER_GAP,
+    CONF_WALLBOX_STABILITY_MIN_GAP_DURATION_SECONDS,
     CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS,
     CONF_SERVICE_CALL_CACHE_SECONDS,
     DEFAULT_MAX_DISCHARGE_POWER,
@@ -53,6 +55,8 @@ from .const import (
     DEFAULT_WALLBOX_POWER_STABILITY_THRESHOLD,
     DEFAULT_WALLBOX_RESUME_CHECK_SECONDS,
     DEFAULT_WALLBOX_START_DELAY_SECONDS,
+    DEFAULT_WALLBOX_STABILITY_MIN_POWER_GAP,
+    DEFAULT_WALLBOX_STABILITY_MIN_GAP_DURATION_SECONDS,
     DEFAULT_SERVICE_CALL_CACHE_SECONDS,
     DEFAULT_COORDINATOR_UPDATE_INTERVAL_SECONDS,
     CONF_PID_ENABLED,
@@ -141,9 +145,11 @@ class MarstekCoordinator:
         self._wallbox_wait_start: datetime | None = None
         self._wallbox_stabilization_start: datetime | None = None
         self._wallbox_power_history = deque(maxlen=self._get_deque_size("wallbox"))
+        self._wallbox_power_gap_history = deque(maxlen=self._get_deque_size("wallbox_power_gap"))
         self._wallbox_min_power: int = 0
         self._wallbox_max_power: int = 0
         self._wallbox_power_difference: int = 0
+        self._wallbox_free_power: int = 0
         self._last_wallbox_pause_attempt = datetime.min # For 60-minute cooldown
         self._wallbox_wait_start = None # Initialisiert: Timer für den Start-Delay
         self._wallbox_stabilization_start = None # Initialisiert: Startzeitpunkt der Stabilisierung nach Start-Delay
@@ -193,6 +199,8 @@ class MarstekCoordinator:
             seconds = self.config.get(CONF_SMOOTHING_SECONDS, DEFAULT_SMOOTHING_SECONDS)
         elif mode == "wallbox":
             seconds = self.config.get(CONF_WALLBOX_RESUME_CHECK_SECONDS, DEFAULT_WALLBOX_RESUME_CHECK_SECONDS)
+        elif mode == "wallbox_power_gap":
+            seconds = self.config.get(CONF_WALLBOX_STABILITY_MIN_GAP_DURATION_SECONDS, DEFAULT_WALLBOX_STABILITY_MIN_GAP_DURATION_SECONDS)
         else:
             return 1
 
@@ -277,6 +285,10 @@ class MarstekCoordinator:
     @property
     def wallbox_power_difference(self) -> int:
         return self._wallbox_power_difference
+
+    @property
+    def wallbox_free_power(self) -> int:
+        return self._wallbox_free_power
 
     @property
     def wallbox_cable_was_on(self) -> bool:
@@ -985,6 +997,7 @@ class MarstekCoordinator:
         wb_cable_sensor = self.config.get(CONF_WALLBOX_CABLE_SENSOR)
         max_surplus = self.config.get(CONF_WALLBOX_MAX_SURPLUS)
         stability_threshold = self.config.get(CONF_WALLBOX_POWER_STABILITY_THRESHOLD)
+        wallbox_stability_min_power_gap: int = self.config.get(CONF_WALLBOX_STABILITY_MIN_POWER_GAP, DEFAULT_WALLBOX_STABILITY_MIN_POWER_GAP)
         try:
             start_delay = int(self.config.get(CONF_WALLBOX_START_DELAY_SECONDS, DEFAULT_WALLBOX_START_DELAY_SECONDS) or 0)
         except (TypeError, ValueError):
@@ -1029,6 +1042,7 @@ class MarstekCoordinator:
                 _LOGGER.info("Wallbox cable unplugged. Resetting wallbox wait states and pause.")
                 self._wallbox_charge_paused = False
                 self._wallbox_power_history.clear()
+                self._wallbox_power_gap_history.clear()
                 self._wallbox_wait_start = None
                 self._wallbox_cable_was_on = False
                 self._last_wallbox_pause_attempt = datetime.min # Reset cooldown on unplug
@@ -1053,6 +1067,11 @@ class MarstekCoordinator:
                 _LOGGER.warning(f"Could not parse state of '{wb_power_sensor}' as float: '{wb_power_state.state}'")
     
         self._wallbox_power_history.append(wb_power)
+        if real_power <= 0:
+            # Nur negative Werte in die Gap-History aufnehmen
+            self._wallbox_power_gap_history.append(real_power)
+        if real_power > 0:
+            self._wallbox_power_gap_history.clear() # Clear gap history if we have positive real power, as the gap is only relevant when we have surplus (negative real power)
 
         # Calculate new power direction
         if real_power < 0:
@@ -1073,6 +1092,7 @@ class MarstekCoordinator:
             self._wallbox_power_is_stable = False # Reset Stabilitätsstatus, da Priorität ausgeschaltet ist
             self._wallbox_stabilization_start = None # Reset Stabilisierungstimer, da
             self._wallbox_power_history.clear() # Clear history to avoid stale data if priority is re-enabled
+            self._wallbox_power_gap_history.clear() # Clear gap history to avoid stale data if priority is re-enabled
             # Reset min/max/threshold
             self._wallbox_min_power = 0 
             self._wallbox_max_power = 0
@@ -1095,6 +1115,7 @@ class MarstekCoordinator:
                     self._wallbox_power_is_stable = False # Reset Stabilitätsstatus, da Auto nicht geladen hat
                     self._wallbox_stabilization_start = None # Reset Stabilisierungstimer, da Auto nicht geladen hat
                     self._wallbox_power_history.clear()
+                    self._wallbox_power_gap_history.clear()
                     # Reset min/max/threshold
                     self._wallbox_min_power = 0 
                     self._wallbox_max_power = 0
@@ -1105,7 +1126,7 @@ class MarstekCoordinator:
             # Regel: Auto lädt, ist die Leistung stabil? -> Pause beenden
             if wb_power > 100:
                 self._wallbox_wait_start = None # Timer wird irrelevant, sobald das Auto lädt
-                if len(self._wallbox_power_history) == self._wallbox_power_history.maxlen:
+                if (len(self._wallbox_power_history) == self._wallbox_power_history.maxlen) and (len(self._wallbox_power_gap_history) == self._wallbox_power_gap_history.maxlen):
                     # NEUE LOGIK: Prüfe die Spanne (Min/Max) der History
                     min_power = min(self._wallbox_power_history)
                     self._wallbox_min_power = min_power # Für Debugging-Zwecke speichern
@@ -1113,17 +1134,17 @@ class MarstekCoordinator:
                     self._wallbox_max_power = max_power # Für Debugging-Zwecke speichern
                     power_spread = max_power - min_power # Die Differenz zwischen Min und Max
                     self._wallbox_power_difference = power_spread # Für Debugging-Zwecke speichern
+                    self._wallbox_free_power = abs(max(self._wallbox_power_gap_history))
+                    _LOGGER.debug(f"Wallbox resume check: Min={min_power:.0f}W, Max={max_power:.0f}W, Spread={power_spread:.0f}W, free power={self._wallbox_free_power:.0f}W")
 
-                    _LOGGER.debug(f"Wallbox resume check: Min={min_power:.0f}W, Max={max_power:.0f}W, Spread={power_spread:.0f}W")
-
-                    if power_spread < stability_threshold_w:
-                        _LOGGER.debug(f"Wallbox power has stabilized (Spread < {stability_threshold_w}W). Releasing batteries.")
+                    if power_spread < stability_threshold_w and self._wallbox_free_power > wallbox_stability_min_power_gap:
+                        _LOGGER.debug(f"Wallbox power has stabilized (Spread < {stability_threshold_w}W and free power > {wallbox_stability_min_power_gap}W). Releasing batteries.")
                         self._wallbox_stabilization_start = datetime.now() # Stabilization-Timer starten (für den aktuellen Versuch)
                         self._wallbox_power_is_stable = True
                         self._wallbox_charge_paused = False
                         return False
                     else:
-                        _LOGGER.debug(f"Wallbox power not yet stable (Spread >= {stability_threshold_w}W). Keeping pause active.")
+                        _LOGGER.debug(f"Wallbox power not yet stable (Spread >= {stability_threshold_w}W or free power <= {wallbox_stability_min_power_gap}W). Keeping pause active.")
                         self._wallbox_power_is_stable = False
                         self._wallbox_stabilization_start = None # Reset the stabilization timer zurücksetzen, da Leistung nicht stabil ist
                         
@@ -1139,6 +1160,7 @@ class MarstekCoordinator:
                         _LOGGER.info(f"Wallbox did not start charging again in {start_delay}s. Releasing batteries.")
                         self._wallbox_charge_paused = False
                         self._wallbox_power_history.clear()
+                        self._wallbox_power_gap_history.clear()
                         # Reset min/max/threshold
                         self._wallbox_min_power = 0 
                         self._wallbox_max_power = 0

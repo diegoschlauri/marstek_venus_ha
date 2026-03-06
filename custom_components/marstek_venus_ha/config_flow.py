@@ -30,6 +30,8 @@ from .const import (
     CONF_WALLBOX_MAX_SURPLUS,
     CONF_WALLBOX_CABLE_SENSOR,
     CONF_WALLBOX_POWER_STABILITY_THRESHOLD,
+    CONF_WALLBOX_STABILITY_MIN_POWER_GAP,
+    CONF_WALLBOX_STABILITY_MIN_GAP_DURATION_SECONDS,
     CONF_WALLBOX_RESUME_CHECK_SECONDS,
     CONF_WALLBOX_START_DELAY_SECONDS,
     CONF_WALLBOX_RETRY_MINUTES,
@@ -56,6 +58,8 @@ from .const import (
     DEFAULT_PRIORITY_INTERVAL,
     DEFAULT_WALLBOX_MAX_SURPLUS,
     DEFAULT_WALLBOX_POWER_STABILITY_THRESHOLD,
+    DEFAULT_WALLBOX_STABILITY_MIN_POWER_GAP,
+    DEFAULT_WALLBOX_STABILITY_MIN_GAP_DURATION_SECONDS,
     DEFAULT_WALLBOX_RESUME_CHECK_SECONDS,
     DEFAULT_WALLBOX_START_DELAY_SECONDS,
     DEFAULT_WALLBOX_RETRY_MINUTES,
@@ -185,6 +189,8 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     selector.EntitySelectorConfig(domain="binary_sensor")
                 ),
                 vol.Optional(CONF_WALLBOX_POWER_STABILITY_THRESHOLD, default=DEFAULT_WALLBOX_POWER_STABILITY_THRESHOLD): int,
+                vol.Optional(CONF_WALLBOX_STABILITY_MIN_POWER_GAP, default=DEFAULT_WALLBOX_STABILITY_MIN_POWER_GAP): int,
+                vol.Optional(CONF_WALLBOX_STABILITY_MIN_GAP_DURATION_SECONDS, default=DEFAULT_WALLBOX_STABILITY_MIN_GAP_DURATION_SECONDS): int,
                 vol.Optional(CONF_WALLBOX_RESUME_CHECK_SECONDS, default=DEFAULT_WALLBOX_RESUME_CHECK_SECONDS): int,
                 vol.Optional(CONF_WALLBOX_START_DELAY_SECONDS, default=DEFAULT_WALLBOX_START_DELAY_SECONDS): int,
                 vol.Optional(CONF_WALLBOX_RETRY_MINUTES, default=DEFAULT_WALLBOX_RETRY_MINUTES): int,
@@ -249,7 +255,7 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
             # PV Sensor explizit nullen wenn entfernt
             if CONF_PV_POWER_SENSOR not in user_input:
                 user_input[CONF_PV_POWER_SENSOR] = None
-                
+
             self._options.update(user_input)
             if self._all_mode:
                 return await self.async_step_batteries()
@@ -395,6 +401,14 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_WALLBOX_POWER_STABILITY_THRESHOLD,
                     default=self._options.get(CONF_WALLBOX_POWER_STABILITY_THRESHOLD, self.config_entry.data.get(CONF_WALLBOX_POWER_STABILITY_THRESHOLD, DEFAULT_WALLBOX_POWER_STABILITY_THRESHOLD)),
+                ): int,
+                vol.Optional(
+                    CONF_WALLBOX_STABILITY_MIN_POWER_GAP,
+                    default=self._options.get(CONF_WALLBOX_STABILITY_MIN_POWER_GAP, self.config_entry.data.get(CONF_WALLBOX_STABILITY_MIN_POWER_GAP, DEFAULT_WALLBOX_STABILITY_MIN_POWER_GAP)),
+                ): int,
+                 vol.Optional(
+                    CONF_WALLBOX_STABILITY_MIN_GAP_DURATION_SECONDS,
+                    default=self._options.get(CONF_WALLBOX_STABILITY_MIN_GAP_DURATION_SECONDS, self.config_entry.data.get(CONF_WALLBOX_STABILITY_MIN_GAP_DURATION_SECONDS, DEFAULT_WALLBOX_STABILITY_MIN_GAP_DURATION_SECONDS)),
                 ): int,
                 vol.Optional(
                     CONF_WALLBOX_RESUME_CHECK_SECONDS,

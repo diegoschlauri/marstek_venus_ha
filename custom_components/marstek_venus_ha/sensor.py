@@ -84,6 +84,12 @@ DIAGNOSTIC_SENSORS: tuple[DiagnosticSensorDescription, ...] = (
         has_entity_name=True,
     ),
     DiagnosticSensorDescription(
+        key="wallbox_free_power",
+        name="Wallbox Min Free Power (Stability Check)",
+        value_fn=lambda c: c.wallbox_free_power,
+        has_entity_name=True,
+    ),
+    DiagnosticSensorDescription(
         key="wallbox_wait_start",
         name="Wallbox Wait Start",
         value_fn=lambda c: c.wallbox_wait_start,
