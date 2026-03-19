@@ -207,7 +207,15 @@ The integration provides two switches to manually control the charging and disch
 - **Default state**: Enabled (on)
 - **Effect**: When enabled (on), the integration prioritizes EV charging over battery charging—pausing battery charging when PV surplus exceeds the configured threshold to supply energy to the car. When disabled (off), all wallbox integration is bypassed and batteries charge/discharge normally based on grid power.
 
+#### Block battery discharge while car charching
+- **Name**: `switch.*._discharge_blocker_cc_switch`
+- **Purpose**: Allows you to disable the discharching blocking feature while car charching.
+- **Default state**: Enabled (off)
+- **Effect**: When enabled (on), the integration doesn't allow any battery consumption while car charching (Standardmode). If enabled you are allways charching your car from grid or pv. Only disable when you know what you are doing. Do not disable it if you want to charge from pv power only!
+
+
 **Use cases:**
 - Temporarily prevent charging during high export prices
 - Temporarily prevent discharging to save battery capacity for evening self-consumption
 - Stop battery operation during maintenance or troubleshooting
+- Allow car charching from batteries

@@ -128,6 +128,7 @@ class MarstekCoordinator:
         # Default to allowing charging/discharging; can be overridden by switches
         self._allow_charging = True
         self._allow_discharging = True
+        self._block_discharging_while_carcharging = True
 
         # State variables
         self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
@@ -238,6 +239,10 @@ class MarstekCoordinator:
     @property
     def allow_discharging(self) -> bool:
         return self._allow_discharging
+
+    @property
+    def block_discharging_while_carcharging(self) -> bool:
+        return self._block_discharging_while_carcharging
 
     @property
     def ct_mode(self) -> bool:
@@ -520,9 +525,7 @@ class MarstekCoordinator:
         wait_event = asyncio.Event()
     
         def _listener(event):
-            entity_id = event.data.get("entity_id")
             new_state = event.data.get("new_state")
-            old_state = event.data.get("old_state")
             if new_state and new_state.state not in ("unavailable", "unknown"):
                 wait_event.set()
     
@@ -1071,7 +1074,7 @@ class MarstekCoordinator:
             # Nur negative Werte in die Gap-History aufnehmen
             self._wallbox_power_gap_history.append(real_power)
         if real_power > 0:
-            self._wallbox_power_gap_history.clear() # Clear gap history if we have positive real power, as the gap is only relevant when we have surplus (negative real power)
+            self._wallbox_power_gap_history.append(0) # If positive, add 0 to gap history to keep it updated and comparable
 
         # Calculate new power direction
         if real_power < 0:
@@ -1079,11 +1082,15 @@ class MarstekCoordinator:
         elif real_power >= 0:
             self._last_power_direction = PowerDir.DISCHARGE
 
-        # 1. Höchste Priorität: Entladeschutz, wenn Wallbox aktiv ist
-        if wb_power > 100 and self._last_power_direction == PowerDir.DISCHARGE:
-            _LOGGER.debug("Wallbox is active, ensuring batteries do not discharge.")
+        # 1. Höchste Priorität: Entladeschutz, wenn Wallbox aktiv ist und Blockierung aktiviert ist
+        if wb_power > 100 and self._last_power_direction == PowerDir.DISCHARGE and self._block_discharging_while_carcharging:
+            _LOGGER.debug("Wallbox is active, blocking is on, ensuring batteries do not discharge.")
             await self._set_all_batteries_to_zero()
             return True
+        
+        if wb_power > 100 and self._last_power_direction == PowerDir.DISCHARGE and not self._block_discharging_while_carcharging:
+            _LOGGER.debug("Wallbox is active, but blocking is off. Allowing discharge but checking for max surplus.")
+            return False
         
         # Neue Wallbox Priority Switch Logik
         if self._wallbox_priority is False:
