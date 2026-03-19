@@ -11,7 +11,7 @@ from .const import DOMAIN, SIGNAL_DIAGNOSTICS_UPDATED
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([ChargingSwitch(entry, coordinator), DischargingSwitch(entry, coordinator), WallboxPrioritySwitch(entry, coordinator)])
+    async_add_entities([ChargingSwitch(entry, coordinator), DischargingSwitch(entry, coordinator), WallboxPrioritySwitch(entry, coordinator), BlockDischargingCCSwitch(entry, coordinator)])
 
 
 class ChargingSwitch(SwitchEntity):
