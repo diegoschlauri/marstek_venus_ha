@@ -46,6 +46,16 @@ from .const import (
     CONF_WALLBOX_STABILITY_MIN_GAP_DURATION_SECONDS,
     CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS,
     CONF_SERVICE_CALL_CACHE_SECONDS,
+    CONF_CHARGE_POWER_LEVEL_1,
+    CONF_CHARGE_POWER_LEVEL_2,
+    CONF_CHARGE_POWER_LEVEL_3,
+    CONF_CHARGE_POWER_LEVEL_4,
+    CONF_CHARGE_POWER_LEVEL_5,
+    CONF_DISCHARGE_POWER_LEVEL_1,
+    CONF_DISCHARGE_POWER_LEVEL_2,
+    CONF_DISCHARGE_POWER_LEVEL_3,
+    CONF_DISCHARGE_POWER_LEVEL_4,
+    CONF_DISCHARGE_POWER_LEVEL_5,
     DEFAULT_MAX_DISCHARGE_POWER,
     DEFAULT_MAX_CHARGE_POWER,
     DEFAULT_MIN_SOC,
@@ -67,6 +77,16 @@ from .const import (
     DEFAULT_PID_KP,
     DEFAULT_PID_KI,
     DEFAULT_PID_KD,
+    DEFAULT_CHARGE_POWER_LEVEL_1,
+    DEFAULT_CHARGE_POWER_LEVEL_2,
+    DEFAULT_CHARGE_POWER_LEVEL_3,
+    DEFAULT_CHARGE_POWER_LEVEL_4,
+    DEFAULT_CHARGE_POWER_LEVEL_5,
+    DEFAULT_DISCHARGE_POWER_LEVEL_1,
+    DEFAULT_DISCHARGE_POWER_LEVEL_2,
+    DEFAULT_DISCHARGE_POWER_LEVEL_3,
+    DEFAULT_DISCHARGE_POWER_LEVEL_4,
+    DEFAULT_DISCHARGE_POWER_LEVEL_5,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -126,9 +146,9 @@ class MarstekCoordinator:
         self._last_update_start: datetime | None = None
 
         # Default to allowing charging/discharging; can be overridden by switches
-        self._allow_charging = True
-        self._allow_discharging = True
-        self._block_discharging_while_carcharging = True
+        self._allow_charging = bool(self.config.get("allow_charging", True))
+        self._allow_discharging = bool(self.config.get("allow_discharging", True))
+        self._block_discharging_while_carcharging = bool(self.config.get("block_discharging_while_charging", True))
 
         # State variables
         self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
@@ -139,8 +159,8 @@ class MarstekCoordinator:
         self._below_min_cycles_to_zero = self.config.get(CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING, 10)
 
         
-        # Wallbox state
-        self._wallbox_priority = True
+        # Wallbox state (persisted via ConfigEntry options key "wallbox_priority")
+        self._wallbox_priority = bool(self.config.get("wallbox_priority", True))
         self._wallbox_charge_paused = False
         self._wallbox_power_is_stable = False
         self._wallbox_wait_start: datetime | None = None
@@ -791,6 +811,25 @@ class MarstekCoordinator:
         if dt > 0 and self._pid_prev_error is not None:
             derivative = (error - self._pid_prev_error) / dt
 
+        # If there are no batteries available for the intended direction,
+        # avoid integrating the PID (which would grow while there is nothing
+        # to command). Determine intended direction and update priority so
+        # availability is current.
+        intended_direction = PowerDir.NEUTRAL
+        if error > 0:
+            intended_direction = PowerDir.CHARGE
+        elif error < 0:
+            intended_direction = PowerDir.DISCHARGE
+
+        # Ensure priority is up to date for this direction
+        await self._update_battery_priority_if_needed(power_direction=intended_direction)
+
+        # If no batteries are available for the intended direction, reset PID and exit.
+        if not self._battery_priority:
+            _LOGGER.debug("PID: no available batteries for direction %s — resetting PID state.", intended_direction.name)
+            self._reset_pid_state()
+            return
+
         try:
             max_discharge_power = int(self.config.get(CONF_MAX_DISCHARGE_POWER, 2500))
             max_charge_power = int(self.config.get(CONF_MAX_CHARGE_POWER, 2500))
@@ -1326,9 +1365,9 @@ class MarstekCoordinator:
                 missing_soc.append(base_entity_id)
                 continue
 
-            if power_direction == PowerDir.CHARGE and soc < max_soc:
+            if power_direction == PowerDir.CHARGE and soc <= max_soc:
                 available_batteries.append({"id": base_entity_id, "soc": soc})
-            elif power_direction == PowerDir.DISCHARGE and soc > min_soc:
+            elif power_direction == PowerDir.DISCHARGE and soc >= min_soc:
                 available_batteries.append({"id": base_entity_id, "soc": soc})
 
         is_reverse = (power_direction == PowerDir.DISCHARGE)
@@ -1566,32 +1605,52 @@ class MarstekCoordinator:
             max_soc = float(DEFAULT_MAX_SOC)
 
         if active_batteries:
-            eligible: list[dict[str, Any]] = []
-            for b in active_batteries:
-                base_entity_id = b.get("id") if isinstance(b, dict) else None
-                if not isinstance(base_entity_id, str) or not base_entity_id:
-                    continue
-                soc = self._get_float_state(f"sensor.{base_entity_id}_battery_soc")
-                if soc is None:
-                    continue
-                if self._last_power_direction == PowerDir.CHARGE and soc >= max_soc:
-                    _LOGGER.debug(
-                        "Excluding battery %s from CHARGE: soc=%s >= max_soc=%s",
-                        base_entity_id,
-                        soc,
-                        max_soc,
-                    )
-                    continue
-                if self._last_power_direction == PowerDir.DISCHARGE and soc <= min_soc:
-                    _LOGGER.debug(
-                        "Excluding battery %s from DISCHARGE: soc=%s <= min_soc=%s",
-                        base_entity_id,
-                        soc,
-                        min_soc,
-                    )
-                    continue
-                eligible.append(b)
-            active_batteries = eligible
+            # Try to filter out batteries that are at SoC limits. If any battery
+            # is excluded due to reaching min/max SoC, immediately recalculate
+            # the battery priority and retry distribution (up to a few attempts)
+            # so the system can adapt within the same update cycle.
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                excluded_due_to_soc = False
+                eligible: list[dict[str, Any]] = []
+                for b in active_batteries:
+                    base_entity_id = b.get("id") if isinstance(b, dict) else None
+                    if not isinstance(base_entity_id, str) or not base_entity_id:
+                        continue
+                    soc = self._get_float_state(f"sensor.{base_entity_id}_battery_soc")
+                    if soc is None:
+                        continue
+                    if self._last_power_direction == PowerDir.CHARGE and soc >= max_soc:
+                        _LOGGER.debug(
+                            "Excluding battery %s from CHARGE: soc=%s >= max_soc=%s",
+                            base_entity_id,
+                            soc,
+                            max_soc,
+                        )
+                        excluded_due_to_soc = True
+                        continue
+                    if self._last_power_direction == PowerDir.DISCHARGE and soc <= min_soc:
+                        _LOGGER.debug(
+                            "Excluding battery %s from DISCHARGE: soc=%s <= min_soc=%s",
+                            base_entity_id,
+                            soc,
+                            min_soc,
+                        )
+                        excluded_due_to_soc = True
+                        continue
+                    eligible.append(b)
+
+                active_batteries = eligible
+
+                if not excluded_due_to_soc:
+                    break
+
+                # If any battery hit a limit, recalculate the overall priority and
+                # rebuild the candidate list. This allows switching to the next
+                # suitable battery immediately in the same update.
+                _LOGGER.debug("Battery reached SoC limit; recalculating priority (attempt %s/%s)", attempt + 1, max_attempts)
+                await self._calculate_battery_priority(self._last_power_direction)
+                active_batteries = self._battery_priority[:target_num_batteries]
 
         # Safeguard: if active_batteries is empty (priority list empty), set all to zero and return
         if not active_batteries:
@@ -1605,27 +1664,99 @@ class MarstekCoordinator:
                 self._reset_pid_state()
             return
 
-        power_per_battery = round(abs_power / len(active_batteries))
-        # Ensure we do not exceed max charge/discharge power
-        if self._last_power_direction == PowerDir.CHARGE:  # Charging
-            power_per_battery = min(power_per_battery, max_charge_power)
-        elif self._last_power_direction == PowerDir.DISCHARGE:  # Discharging
-            power_per_battery = min(power_per_battery, max_discharge_power)
+        # Determine per-battery caps based on SoC-level tables (configurable)
+        # Charge levels: check high SoC ranges first (>=98, >=95, >=91, >=86, >=80), below -> use max_charge_power
+        # Discharge levels: check low SoC ranges first (<=13, <=15, <=19, <=25, <=30), above -> use max_discharge_power
+        charge_levels = [
+            int(self.config.get(CONF_CHARGE_POWER_LEVEL_1, DEFAULT_CHARGE_POWER_LEVEL_1)),
+            int(self.config.get(CONF_CHARGE_POWER_LEVEL_2, DEFAULT_CHARGE_POWER_LEVEL_2)),
+            int(self.config.get(CONF_CHARGE_POWER_LEVEL_3, DEFAULT_CHARGE_POWER_LEVEL_3)),
+            int(self.config.get(CONF_CHARGE_POWER_LEVEL_4, DEFAULT_CHARGE_POWER_LEVEL_4)),
+            int(self.config.get(CONF_CHARGE_POWER_LEVEL_5, DEFAULT_CHARGE_POWER_LEVEL_5)),
+        ]
+        discharge_levels = [
+            int(self.config.get(CONF_DISCHARGE_POWER_LEVEL_1, DEFAULT_DISCHARGE_POWER_LEVEL_1)),
+            int(self.config.get(CONF_DISCHARGE_POWER_LEVEL_2, DEFAULT_DISCHARGE_POWER_LEVEL_2)),
+            int(self.config.get(CONF_DISCHARGE_POWER_LEVEL_3, DEFAULT_DISCHARGE_POWER_LEVEL_3)),
+            int(self.config.get(CONF_DISCHARGE_POWER_LEVEL_4, DEFAULT_DISCHARGE_POWER_LEVEL_4)),
+            int(self.config.get(CONF_DISCHARGE_POWER_LEVEL_5, DEFAULT_DISCHARGE_POWER_LEVEL_5)),
+        ]
 
         active_battery_ids = [b["id"] for b in active_batteries]
 
+        per_batt_cap: dict[str, int] = {}
+        for b in active_battery_ids:
+            soc = self._get_float_state(f"sensor.{b}_battery_soc")
+            if soc is None:
+                # If SoC unknown, allow full configured max
+                cap = int(max_charge_power) if self._last_power_direction == PowerDir.CHARGE else int(max_discharge_power)
+            else:
+                if self._last_power_direction == PowerDir.CHARGE:
+                    if soc >= 98:
+                        cap = charge_levels[0]
+                    elif soc >= 95:
+                        cap = charge_levels[1]
+                    elif soc >= 91:
+                        cap = charge_levels[2]
+                    elif soc >= 86:
+                        cap = charge_levels[3]
+                    elif soc >= 80:
+                        cap = charge_levels[4]
+                    else:
+                        cap = int(max_charge_power)
+                    cap = min(cap, int(max_charge_power))
+                else:
+                    # Discharge
+                    if soc <= 13:
+                        cap = discharge_levels[0]
+                    elif soc <= 15:
+                        cap = discharge_levels[1]
+                    elif soc <= 19:
+                        cap = discharge_levels[2]
+                    elif soc <= 25:
+                        cap = discharge_levels[3]
+                    elif soc <= 30:
+                        cap = discharge_levels[4]
+                    else:
+                        cap = int(max_discharge_power)
+                    cap = min(cap, int(max_discharge_power))
+            per_batt_cap[b] = max(0, int(cap))
+
+        # Allocate requested power among active batteries respecting per-battery caps using iterative water-filling
+        remaining = int(round(abs_power))
+        remaining_caps = dict(per_batt_cap)
+        allocations: dict[str, int] = {b: 0 for b in active_battery_ids}
+
+        while remaining > 0 and any(c > 0 for c in remaining_caps.values()):
+            # distribute evenly among batteries that still have cap
+            avail = [b for b, c in remaining_caps.items() if c > 0]
+            if not avail:
+                break
+            share = max(1, remaining // len(avail))
+            progress = False
+            for b in avail:
+                give = min(share, remaining_caps[b], remaining)
+                if give <= 0:
+                    continue
+                allocations[b] += give
+                remaining_caps[b] -= give
+                remaining -= give
+                progress = True
+            if not progress:
+                break
+
         _LOGGER.debug(
-            "Distributing %sW (%s requested) to %s batteries: %s with %sW each.",
+            "Distributing %sW (%s requested) to %s batteries: %s with allocations=%s",
             round(abs_power, 0),
             round(requested_abs_power, 0),
             len(active_battery_ids),
             active_battery_ids,
-            power_per_battery,
+            allocations,
         )
 
         for battery_base_id in self._battery_entities:
-            if battery_base_id in active_battery_ids:
-                await self._set_battery_power(battery_base_id, power_per_battery, self._last_power_direction)
+            if battery_base_id in allocations and allocations[battery_base_id] > 0:
+                await self._set_battery_power(battery_base_id, allocations[battery_base_id], self._last_power_direction)
             else:
                 await self._set_battery_power(battery_base_id, 0, 0)
 
