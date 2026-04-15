@@ -1,4 +1,4 @@
-from custom_components.marstek_venus_ha_2.coordinator import MarstekCoordinator
+from custom_components.marstek_venus_ha.coordinator import MarstekCoordinator
 
 
 def _mk_coordinator(*, kp=0.0, ki=1.0, kd=0.0, integral=0.0):

@@ -8,7 +8,7 @@
         "title": "Marstek Venus",
         "description": "Sensoren und grundlegendes Verhalten konfigurieren.",
         "data": {
-          "ct_mode": "CT-Zangenmodus",
+          "ct_mode": "Marstek CT-Strommesser Modus",
           "grid_power_sensor": "Netzleistungs-Sensor",
           "pv_power_sensor": "PV-Leistungs-Sensor (optional)",
           "smoothing_seconds": "Glättungsfenster (Sekunden)",
@@ -29,6 +29,7 @@
           "max_charge_power": "Max. Ladeleistung (W)",
           "min_surplus": "Minimaler Überschuss zum Laden (W)",
           "min_consumption": "Minimaler Verbrauch zum Entladen (W)",
+          "max_limit_breaches_before_zeroing": "Max. Anzahl aufeinanderfolgender Zyklen unterhalb der Mindestgrenze bevor auf 0W gesetzt wird",
           "power_stage_discharge_1": "Entlade-Stufe 1 Leistung (W)",
           "power_stage_discharge_2": "Entlade-Stufe 2 Leistung (W)",
           "power_stage_charge_1": "Lade-Stufe 1 Leistung (W)",
@@ -43,9 +44,11 @@
         "data": {
           "wallbox_power_sensor": "Wallbox Leistungs-Sensor (optional)",
           "wallbox_cable_sensor": "Wallbox Kabel verbunden (Sensor, optional)",
-          "wallbox_max_surplus": "Max. Überschuss für Wallbox (W)",
+          "wallbox_max_surplus": "Minimaler Überschuss damit die Wallbox priorisiert wird (W)",
           "wallbox_power_stability_threshold": "Schwellwert Leistungsstabilität (W)",
-          "wallbox_resume_check_seconds": "Intervall Wiederaufnahmeprüfung (Sekunden)",
+          "wallbox_stability_min_power_gap": "Minimale freie Leistung für Wallbox-Stabilitätsprüfung (W)",
+          "wallbox_stability_min_gap_duration_seconds": "Minimale Dauer der freien Leistung für Wallbox-Stabilitätsprüfung (Sekunden)",
+          "wallbox_resume_check_seconds": "Länge der Wallbox Power History für die Stabilitätskontrolle (letzte x Sekunden)",
           "wallbox_start_delay_seconds": "Startverzögerung (Sekunden)",
           "wallbox_retry_minutes": "Wiederholungsverzögerung (Minuten)"
         }
@@ -76,9 +79,13 @@
           "batteries": "Batterien",
           "wallbox": "Wallbox",
           "pid": "PID-Regelung"
-        },
+        }
+      },
+      "basic": {
+        "title": "Basis-Einstellungen",
+        "description": "Basis-Einstellungen aktualisieren.",
         "data": {
-          "ct_mode": "CT-Zangenmodus",
+          "ct_mode": "Marstek CT-Strommesser Modus",
           "grid_power_sensor": "Netzleistungs-Sensor",
           "pv_power_sensor": "PV-Leistungs-Sensor (optional)",
           "smoothing_seconds": "Glättungsfenster (Sekunden)",
@@ -88,7 +95,7 @@
       },
       "batteries": {
         "title": "Batterien",
-        "description": "Batteriekonfiguration und Grenzen aktualisieren.\n\nFehlende Entities: {missing}",
+        "description": "Batterien und Leistungsgrenzen anpassen.\n\nWenn die Integration die erwarteten Entities für das Batterie-Präfix nicht findet, werden sie hier angezeigt: {missing}",
         "data": {
           "battery_1_entity": "Batterie 1 Gerät/Entity",
           "battery_2_entity": "Batterie 2 Gerät/Entity (optional)",
@@ -99,6 +106,7 @@
           "max_charge_power": "Max. Ladeleistung (W)",
           "min_surplus": "Minimaler Überschuss zum Laden (W)",
           "min_consumption": "Minimaler Verbrauch zum Entladen (W)",
+          "max_limit_breaches_before_zeroing": "Max. Anzahl aufeinanderfolgender Zyklen unterhalb der Mindestgrenze bevor auf 0W gesetzt wird",
           "power_stage_discharge_1": "Entlade-Stufe 1 Leistung (W)",
           "power_stage_discharge_2": "Entlade-Stufe 2 Leistung (W)",
           "power_stage_charge_1": "Lade-Stufe 1 Leistung (W)",
@@ -113,9 +121,11 @@
         "data": {
           "wallbox_power_sensor": "Wallbox Leistungs-Sensor (optional)",
           "wallbox_cable_sensor": "Wallbox Kabel verbunden (Sensor, optional)",
-          "wallbox_max_surplus": "Max. Überschuss für Wallbox (W)",
+          "wallbox_max_surplus": "Minimaler Überschuss damit die Wallbox priorisiert wird (W)",
           "wallbox_power_stability_threshold": "Schwellwert Leistungsstabilität (W)",
-          "wallbox_resume_check_seconds": "Intervall Wiederaufnahmeprüfung (Sekunden)",
+          "wallbox_stability_min_power_gap": "Minimale freie Leistung für Wallbox-Stabilitätsprüfung (W)",
+          "wallbox_stability_min_gap_duration_seconds": "Minimale Dauer der freien Leistung für Wallbox-Stabilitätsprüfung (Sekunden)",
+          "wallbox_resume_check_seconds": "Länge der Wallbox Power History für die Stabilitätskontrolle (letzte x Sekunden)",
           "wallbox_start_delay_seconds": "Startverzögerung (Sekunden)",
           "wallbox_retry_minutes": "Wiederholungsverzögerung (Minuten)"
         }

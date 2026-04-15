@@ -29,6 +29,7 @@
           "max_charge_power": "Maximum charge power (W)",
           "min_surplus": "Minimum surplus for charging (W)",
           "min_consumption": "Minimum consumption for discharging (W)",
+          "max_limit_breaches_before_zeroing": "Max. number of consecutive cycles below minimum limit before setting to 0W",
           "power_stage_discharge_1": "Discharge stage 1 power (W)",
           "power_stage_discharge_2": "Discharge stage 2 power (W)",
           "power_stage_charge_1": "Charge stage 1 power (W)",
@@ -43,9 +44,11 @@
         "data": {
           "wallbox_power_sensor": "Wallbox power sensor (optional)",
           "wallbox_cable_sensor": "Wallbox cable connected sensor (optional)",
-          "wallbox_max_surplus": "Maximum surplus for wallbox (W)",
+          "wallbox_max_surplus": "Minimum surplus for wallbox priority (W)",
           "wallbox_power_stability_threshold": "Power stability threshold (W)",
-          "wallbox_resume_check_seconds": "Resume check interval (seconds)",
+          "wallbox_stability_min_power_gap": "Minimum free power for wallbox stability check (W)",
+          "wallbox_stability_min_gap_duration_seconds": "Minimum duration of free power for wallbox stability check (seconds)",
+          "wallbox_resume_check_seconds": "Length of wallbox power history for stability check (last x seconds)",
           "wallbox_start_delay_seconds": "Start delay (seconds)",
           "wallbox_retry_minutes": "Retry delay (minutes)"
         }
@@ -76,7 +79,10 @@
           "batteries": "Batteries",
           "wallbox": "Wallbox",
           "pid": "PID control"
-        },
+        }},
+      "basic": {
+        "title": "Basic settings",
+        "description": "Update basic settings",
         "data": {
           "ct_mode": "CT clamp mode",
           "grid_power_sensor": "Grid power sensor",
@@ -99,6 +105,7 @@
           "max_charge_power": "Maximum charge power (W)",
           "min_surplus": "Minimum surplus for charging (W)",
           "min_consumption": "Minimum consumption for discharging (W)",
+          "max_limit_breaches_before_zeroing": "Max. number of consecutive cycles below minimum limit before setting to 0W",
           "power_stage_discharge_1": "Discharge stage 1 power (W)",
           "power_stage_discharge_2": "Discharge stage 2 power (W)",
           "power_stage_charge_1": "Charge stage 1 power (W)",
@@ -113,9 +120,11 @@
         "data": {
           "wallbox_power_sensor": "Wallbox power sensor (optional)",
           "wallbox_cable_sensor": "Wallbox cable connected sensor (optional)",
-          "wallbox_max_surplus": "Maximum surplus for wallbox (W)",
+          "wallbox_max_surplus": "Minimum surplus for wallbox priority (W)",
           "wallbox_power_stability_threshold": "Power stability threshold (W)",
-          "wallbox_resume_check_seconds": "Resume check interval (seconds)",
+          "wallbox_stability_min_power_gap": "Minimum free power for wallbox stability check (W)",
+          "wallbox_stability_min_gap_duration_seconds": "Minimum duration of free power for wallbox stability check (seconds)",
+          "wallbox_resume_check_seconds": "Length of wallbox power history for stability check (last x seconds)",
           "wallbox_start_delay_seconds": "Start delay (seconds)",
           "wallbox_retry_minutes": "Retry delay (minutes)"
         }

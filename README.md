@@ -68,7 +68,7 @@ you cannot proceed if they are missing.
 
 ### Manual installation
 
-1.  Download the folder `custom_components/marstek_venus_ha_2` from this repository.
+1.  Download the folder `custom_components/marstek_venus_ha` from this repository.
 2.  Copy it into the `custom_components` directory of your Home Assistant installation.
 3.  Restart Home Assistant.
 
@@ -92,6 +92,7 @@ After installation you can add the integration via the Home Assistant UI:
 | **Power smoothing in seconds** | Time window (seconds) used to compute the average grid power. If set to 0, no smoothing is applied and the latest value is used. | `0` |
 | **Minimum surplus** | Minimum power surplus in watts required to start charging. | `200` |
 | **Minimum import** | Minimum consumption in watts required to start discharging. | `200` |
+| **Maximum import/surplus limit breaches** | Set the max of the counter for allowed surplus/import limit breaches. | `10` |
 | **First battery entity** | Base name of the entities for the first battery. | `marstek_l1` |
 | **Second battery entity (optional)** | Base name for the second battery. Leave empty if not available. | `marstek_l2` |
 | **Third battery entity (optional)** | Base name for the third battery. Leave empty if not available. | `marstek_l3` |
@@ -103,13 +104,15 @@ After installation you can add the integration via the Home Assistant UI:
 | **Second discharge power level (W)** | Grid import at which a third battery is enabled. | `1200` |
 | **First charge power level (W)** | Grid export at which a second battery is enabled. | `2000` |
 | **Second charge power level (W)** | Grid export at which a third battery is enabled. | `4000` |
-| **Power level offset (W)** | Offset used to switch power levels with less toggling. | `100` |
+| **Power level offset (W)** | Offset used to switch power levels with less toggling. | `300` |
 | **Priority evaluation interval (minutes)** | Interval at which battery priorities are re-evaluated. | `15` |
 | **Wallbox power sensor ID (optional)**| Sensor that measures wallbox charging power. | `sensor.wallbox_power` |
-| **Wallbox maximum surplus (W) (optional)**| If PV surplus exceeds this value, battery charging is paused. | `1500` |
+| **Wallbox minimum surplus (W) (optional)**| If PV surplus exceeds this value, battery charging is paused for car charging. | `1500` |
 | **Wallbox sensor for plugged-in cable (optional)**| A binary sensor (`on`/`off`) that indicates whether a charging cable is connected. | `binary_sensor.wallbox_cable_plugged_in` |
-| **Wallbox power fluctuation (W) for enabling battery charging (optional)**| Tolerance for wallbox power fluctuations. If wallbox power has not increased by more than this value over the last X seconds, battery charging is allowed again. | `200` |
-| **Wallbox update time for enabling battery charging in seconds (optional)**| Number of seconds until batteries are released for charging again if the power fluctuation threshold is not exceeded. | `300` |
+| **Wallbox power fluctuation (W) for enabling battery charging (optional)**| Tolerance for wallbox power fluctuations. If wallbox power has not increased by more than this value over the last X seconds, battery charging is allowed again. | `100` |
+| **Wallbox free power for enabling battery charging (optional)**| Minimum of free power (grid export) in watts, which must be available to check for a stabilization of the wallbox over the duration X. | `500`|
+| **Wallbox duration of free power for enabling battery charging (optional)**| Number of seconds of the free power (grid export) in seconds, to check for a stabilization of the wallbox. | `30`|
+| **Wallbox duration for enabling battery charging in seconds (optional)**| Number of seconds until batteries are released for charging again if the power fluctuation threshold is not exceeded. | `300` |
 | **Wallbox start time in seconds (optional)**| Number of seconds to wait before releasing the batteries again. This is used when a car is plugged in but does not start charging. This value is also relevant for phase switching of the wallbox. | `120` |
 | **Wallbox retry in minutes (optional)**| If a wallbox session ends and the cable remains plugged in, after this number of minutes and with sufficient surplus (> wallbox surplus parameter), the batteries are paused for the wallbox start time to allow charging. | `60` |
 | **Coordinator update interval**| Minimum number of seconds between executions of the logic update cycle (throttle). The logic is triggered by sensor updates (event-driven). | `3` |
@@ -181,3 +184,38 @@ The absolute grid power (`abs(power)`) determines the number of active batteries
 * **Discharge protection**: As soon as the wallbox draws power (`Power > 10W`), discharging of **all** batteries is stopped immediately.
 * **Charging priority for the car**: If the **real PV surplus** (grid export + current battery charging power) exceeds the configured threshold, charging the home batteries is paused to prioritize the car.
 * **Intelligent charge resume**: Battery charging is released again when wallbox charging power stagnates for X seconds (e.g. because the car is full or has reached its maximum charging power). Discharging remains blocked as long as the wallbox is charging.
+
+### Switches
+
+The integration provides two switches to manually control the charging and discharging behavior:
+
+#### Charging Allowed
+- **Name**: `switch.*._charging_switch`
+- **Purpose**: Allows you to manually enable or disable charging of the batteries.
+- **Default state**: Enabled (on)
+- **Effect**: When disabled (off), the integration will not command any charging power to the batteries, regardless of available PV surplus.
+
+#### Discharging Allowed
+- **Name**: `switch.*._discharging_switch`
+- **Purpose**: Allows you to manually enable or disable discharging of the batteries.
+- **Default state**: Enabled (on)
+- **Effect**: When disabled (off), the integration will not command any discharging power from the batteries, even if there is grid import or high consumption.
+
+#### Wallbox Priority
+- **Name**: `switch.*._wallbox_priority_switch`
+- **Purpose**: Allows you to enable or disable the wallbox charging priority logic.
+- **Default state**: Enabled (on)
+- **Effect**: When enabled (on), the integration prioritizes EV charging over battery charging—pausing battery charging when PV surplus exceeds the configured threshold to supply energy to the car. When disabled (off), all wallbox integration is bypassed and batteries charge/discharge normally based on grid power.
+
+#### Block battery discharge while car charging
+- **Name**: `switch.*._discharge_blocker_cc_switch`
+- **Purpose**: Allows you to disable the discharging blocking feature while car charging.
+- **Default state**: Enabled (off)
+- **Effect**: When enabled (on), the integration doesn't allow any battery consumption while car charging (standardmode). If enabled you are allways charging your car from grid or pv. Only disable when you know what you are doing. Do not disable it if you want to charge from pv power only!
+
+
+**Use cases:**
+- Temporarily prevent charging during high export prices
+- Temporarily prevent discharging to save battery capacity for evening self-consumption
+- Stop battery operation during maintenance or troubleshooting
+- Allow car charging from batteries
