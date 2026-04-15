@@ -51,12 +51,7 @@ class ChargingSwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs):
         self._data._allow_charging = True
-        # Persist the new state so it survives restarts
-        try:
-            new_options = {**self._entry.options, "allow_charging": True}
-            self.hass.config_entries.async_update_entry(self._entry, options=new_options)
-        except Exception:
-            pass
+        await self._data.async_save_settings()
         self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
         self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
         self.async_write_ha_state()
@@ -66,12 +61,7 @@ class ChargingSwitch(SwitchEntity):
 
     async def async_turn_off(self, **kwargs):
         self._data._allow_charging = False
-        # Persist the new state so it survives restarts
-        try:
-            new_options = {**self._entry.options, "allow_charging": False}
-            self.hass.config_entries.async_update_entry(self._entry, options=new_options)
-        except Exception:
-            pass
+        await self._data.async_save_settings()
         self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
         self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
         self.async_write_ha_state()
@@ -117,12 +107,7 @@ class DischargingSwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs):
         self._data._allow_discharging = True
-        # Persist the new state so it survives restarts
-        try:
-            new_options = {**self._entry.options, "allow_discharging": True}
-            self.hass.config_entries.async_update_entry(self._entry, options=new_options)
-        except Exception:
-            pass
+        await self._data.async_save_settings()
         self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
         self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
         self.async_write_ha_state()
@@ -132,12 +117,7 @@ class DischargingSwitch(SwitchEntity):
 
     async def async_turn_off(self, **kwargs):
         self._data._allow_discharging = False
-        # Persist the new state so it survives restarts
-        try:
-            new_options = {**self._entry.options, "allow_discharging": False}
-            self.hass.config_entries.async_update_entry(self._entry, options=new_options)
-        except Exception:
-            pass
+        await self._data.async_save_settings()
         self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
         self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
         self.async_write_ha_state()
@@ -182,12 +162,7 @@ class WallboxPrioritySwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs):
         self._data._wallbox_priority = True
-        # Persist the new state so it survives restarts
-        try:
-            new_options = {**self._entry.options, "wallbox_priority": True}
-            self.hass.config_entries.async_update_entry(self._entry, options=new_options)
-        except Exception:
-            pass
+        await self._data.async_save_settings()
         self._data._wallbox_wait_start = None  # Reset wallbox wait timer to allow immediate priority
         self._data._last_wallbox_pause_attempt = datetime.min  # Reset last pause attempt to allow immediate action
         self._data._wallbox_power_history.clear()  # Clear power history to allow immediate stability assessment
@@ -200,12 +175,7 @@ class WallboxPrioritySwitch(SwitchEntity):
 
     async def async_turn_off(self, **kwargs):
         self._data._wallbox_priority = False
-        # Persist the new state so it survives restarts
-        try:
-            new_options = {**self._entry.options, "wallbox_priority": False}
-            self.hass.config_entries.async_update_entry(self._entry, options=new_options)
-        except Exception:
-            pass
+        await self._data.async_save_settings()
         self._data._wallbox_charge_paused = False  # Release Batteries from blockade
         self._data._last_wallbox_pause_attempt = datetime.min  # Reset last pause attempt to allow immediate action
         self._data._wallbox_power_history.clear()  # Clear power history to allow immediate stability assessment
@@ -253,12 +223,7 @@ class BlockDischargingCCSwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs):
         self._data._block_discharging_while_carcharging = True
-        # Persist the new state so it survives restarts
-        try:
-            new_options = {**self._entry.options, "block_discharging_while_charging": True}
-            self.hass.config_entries.async_update_entry(self._entry, options=new_options)
-        except Exception:
-            pass
+        await self._data.async_save_settings()
         self.async_write_ha_state()
         async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
         if hasattr(self._data, "async_request_update"):
@@ -266,12 +231,7 @@ class BlockDischargingCCSwitch(SwitchEntity):
 
     async def async_turn_off(self, **kwargs):
         self._data._block_discharging_while_carcharging = False
-        # Persist the new state so it survives restarts
-        try:
-            new_options = {**self._entry.options, "block_discharging_while_charging": False}
-            self.hass.config_entries.async_update_entry(self._entry, options=new_options)
-        except Exception:
-            pass
+        await self._data.async_save_settings()
         self.async_write_ha_state()
         async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
         if hasattr(self._data, "async_request_update"):

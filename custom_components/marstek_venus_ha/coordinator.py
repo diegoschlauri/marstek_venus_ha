@@ -12,8 +12,11 @@ from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN, STATE_ON
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.util import dt as dt_util
+from homeassistant.helpers.storage import Store
+
 
 from .const import (
+    DOMAIN,
     SIGNAL_DIAGNOSTICS_UPDATED,
     CONF_CT_MODE,
     CONF_GRID_POWER_SENSOR,
@@ -91,6 +94,10 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Versioning for your storage file
+STORAGE_VERSION = 1
+STORAGE_KEY = f"{DOMAIN}_settings"
+
 class PowerDir(IntEnum):
     NEUTRAL = 0
     CHARGE = 1
@@ -115,7 +122,14 @@ class MarstekCoordinator:
         self.config = dict(entry.data)
         # ...und überschreibe sie mit den Werten aus dem Options-Flow.
         self.config.update(entry.options)
-        
+        # Store for persisting settings or state if needed
+        self._store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{entry.entry_id}")
+        # Default Values
+        self._allow_charging = True
+        self._allow_discharging = True
+        self._block_discharging_while_carcharging = True
+        self._wallbox_priority = True
+
         # Version will be loaded asynchronously
         self._manifest_version = "unknown"
 
@@ -145,11 +159,6 @@ class MarstekCoordinator:
         self._update_lock = asyncio.Lock()
         self._last_update_start: datetime | None = None
 
-        # Default to allowing charging/discharging; can be overridden by switches
-        self._allow_charging = bool(self.config.get("allow_charging", True))
-        self._allow_discharging = bool(self.config.get("allow_discharging", True))
-        self._block_discharging_while_carcharging = bool(self.config.get("block_discharging_while_charging", True))
-
         # State variables
         self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
         self._battery_priority = []
@@ -160,7 +169,6 @@ class MarstekCoordinator:
 
         
         # Wallbox state (persisted via ConfigEntry options key "wallbox_priority")
-        self._wallbox_priority = bool(self.config.get("wallbox_priority", True))
         self._wallbox_charge_paused = False
         self._wallbox_power_is_stable = False
         self._wallbox_wait_start: datetime | None = None
@@ -192,6 +200,33 @@ class MarstekCoordinator:
                 self.config.get(CONF_BATTERY_3_ENTITY),
             ] if b
         ]
+    
+    async def async_load_settings(self) -> None:
+        """Fetch settings from the Store helper."""
+        stored_data = await self._store.async_load()
+        if stored_data:
+            # Get values with defaults if they don't exist in the JSON
+            self._allow_charging = stored_data.get("allow_charging", True)
+            self._allow_discharging = stored_data.get("allow_discharging", True)
+            self._block_discharging_while_carcharging = stored_data.get("block_discharging_while_carcharging", True)
+            self._wallbox_priority = stored_data.get("wallbox_priority", True)
+        else:
+            # If no store exists yet, use your defaults
+            self._allow_charging = True
+            self._allow_discharging = True
+            self._block_discharging_while_carcharging = True
+            self._wallbox_priority = True
+
+    async def async_save_settings(self) -> None:
+        """Save current settings to store."""
+        await self._store.async_save({
+            "allow_charging": self._allow_charging,
+            "allow_discharging": self._allow_discharging,
+            "block_discharging_while_carcharging": self._block_discharging_while_carcharging,
+            "wallbox_priority": self._wallbox_priority,
+            # include all other persisted flags here
+        })
+
 
     async def async_load_manifest_version(self) -> None:
         """Load version from manifest.json file asynchronously."""
@@ -565,6 +600,9 @@ class MarstekCoordinator:
     
     async def async_start_listening(self):
         """Start the coordinator's update loop."""
+        # Load the persisted values before adding entities
+        await self.async_load_settings()
+        
         if self._is_running or self._unsub_listeners or self._update_task is not None:
             await self.async_stop_listening()
 
