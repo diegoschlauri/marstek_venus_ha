@@ -1447,7 +1447,95 @@ class MarstekCoordinator:
             target_num_batteries = min(target_num_batteries, 3)
 
         _LOGGER.debug(f"Determined target number of batteries: {target_num_batteries} (Available: {num_available}, Currently Active: {num_currently_active})")
-        return target_num_batteries
+        # Consider per-battery SoC-based caps: if the selected number of
+        # batteries cannot supply the requested power because of their
+        # per-battery caps, increase the number of batteries until the
+        # requested power can be supplied or we exhaust available batteries.
+        try:
+            charge_levels = [
+                int(self.config.get(CONF_CHARGE_POWER_LEVEL_1, DEFAULT_CHARGE_POWER_LEVEL_1)),
+                int(self.config.get(CONF_CHARGE_POWER_LEVEL_2, DEFAULT_CHARGE_POWER_LEVEL_2)),
+                int(self.config.get(CONF_CHARGE_POWER_LEVEL_3, DEFAULT_CHARGE_POWER_LEVEL_3)),
+                int(self.config.get(CONF_CHARGE_POWER_LEVEL_4, DEFAULT_CHARGE_POWER_LEVEL_4)),
+                int(self.config.get(CONF_CHARGE_POWER_LEVEL_5, DEFAULT_CHARGE_POWER_LEVEL_5)),
+            ]
+            discharge_levels = [
+                int(self.config.get(CONF_DISCHARGE_POWER_LEVEL_1, DEFAULT_DISCHARGE_POWER_LEVEL_1)),
+                int(self.config.get(CONF_DISCHARGE_POWER_LEVEL_2, DEFAULT_DISCHARGE_POWER_LEVEL_2)),
+                int(self.config.get(CONF_DISCHARGE_POWER_LEVEL_3, DEFAULT_DISCHARGE_POWER_LEVEL_3)),
+                int(self.config.get(CONF_DISCHARGE_POWER_LEVEL_4, DEFAULT_DISCHARGE_POWER_LEVEL_4)),
+                int(self.config.get(CONF_DISCHARGE_POWER_LEVEL_5, DEFAULT_DISCHARGE_POWER_LEVEL_5)),
+            ]
+        except Exception:
+            charge_levels = [DEFAULT_CHARGE_POWER_LEVEL_1, DEFAULT_CHARGE_POWER_LEVEL_2, DEFAULT_CHARGE_POWER_LEVEL_3, DEFAULT_CHARGE_POWER_LEVEL_4, DEFAULT_CHARGE_POWER_LEVEL_5]
+            discharge_levels = [DEFAULT_DISCHARGE_POWER_LEVEL_1, DEFAULT_DISCHARGE_POWER_LEVEL_2, DEFAULT_DISCHARGE_POWER_LEVEL_3, DEFAULT_DISCHARGE_POWER_LEVEL_4, DEFAULT_DISCHARGE_POWER_LEVEL_5]
+
+        # Get the maximum power limits from config, with defaults
+        max_discharge_power = self.config.get(CONF_MAX_DISCHARGE_POWER, 2500)
+        max_charge_power = self.config.get(CONF_MAX_CHARGE_POWER, 2500)
+        # Determine intended direction from the provided power if possible
+        direction = self._last_power_direction
+        if power is not None:
+            try:
+                if float(power) < 0:
+                    direction = PowerDir.CHARGE
+                elif float(power) > 0:
+                    direction = PowerDir.DISCHARGE
+            except Exception:
+                pass
+
+        # Helper to compute cap for a battery based on its SoC and direction
+        def _cap_for_batt(base_entity_id: str) -> int:
+            soc = self._get_float_state(f"sensor.{base_entity_id}_battery_soc")
+            if soc is None:
+                return int(max_charge_power) if direction == PowerDir.CHARGE else int(max_discharge_power)
+            if direction == PowerDir.CHARGE:
+                if soc >= 98:
+                    cap = charge_levels[0]
+                elif soc >= 95:
+                    cap = charge_levels[1]
+                elif soc >= 91:
+                    cap = charge_levels[2]
+                elif soc >= 86:
+                    cap = charge_levels[3]
+                elif soc >= 80:
+                    cap = charge_levels[4]
+                else:
+                    cap = int(max_charge_power)
+                return min(cap, int(max_charge_power))
+            else:
+                if soc <= 13:
+                    cap = discharge_levels[0]
+                elif soc <= 15:
+                    cap = discharge_levels[1]
+                elif soc <= 19:
+                    cap = discharge_levels[2]
+                elif soc <= 25:
+                    cap = discharge_levels[3]
+                elif soc <= 30:
+                    cap = discharge_levels[4]
+                else:
+                    cap = int(max_discharge_power)
+                return min(cap, int(max_discharge_power))
+
+        # Try increasing the number of batteries if needed to meet the requested power
+        requested = abs_power
+        curr_target = target_num_batteries
+        # Build list of available battery ids according to current priority
+        # Only include batteries that have a string `id` value; cast for typing
+        available_ids: list[str] = [cast(str, b.get("id")) for b in self._battery_priority if isinstance(b, dict) and isinstance(b.get("id"), str)]
+        while curr_target < len(available_ids):
+            # Sum caps of top curr_target batteries
+            top_ids: list[str] = available_ids[:curr_target]
+            total_cap = sum(_cap_for_batt(bid) for bid in top_ids)
+            if total_cap >= requested:
+                break
+            curr_target += 1
+
+        # Ensure curr_target is not greater than allowed by available batteries
+        curr_target = min(curr_target, len(available_ids))
+        _LOGGER.debug(f"Adjusted target batteries considering per-battery caps: {curr_target}")
+        return curr_target
 
     async def _distribute_power(self, power: float, target_num_batteries: int = 1, *, from_pid: bool = False):
         """Control battery charge/discharge based on power stages."""
