@@ -2,7 +2,7 @@ from datetime import datetime
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
 from homeassistant.helpers.entity import DeviceInfo
 from .coordinator import MarstekCoordinator, PowerDir
@@ -51,6 +51,7 @@ class ChargingSwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs):
         self._data._allow_charging = True
+        await self._data.async_save_settings()
         self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
         self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
         self.async_write_ha_state()
@@ -60,6 +61,7 @@ class ChargingSwitch(SwitchEntity):
 
     async def async_turn_off(self, **kwargs):
         self._data._allow_charging = False
+        await self._data.async_save_settings()
         self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
         self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
         self.async_write_ha_state()
@@ -105,6 +107,7 @@ class DischargingSwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs):
         self._data._allow_discharging = True
+        await self._data.async_save_settings()
         self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
         self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
         self.async_write_ha_state()
@@ -114,6 +117,7 @@ class DischargingSwitch(SwitchEntity):
 
     async def async_turn_off(self, **kwargs):
         self._data._allow_discharging = False
+        await self._data.async_save_settings()
         self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
         self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
         self.async_write_ha_state()
@@ -158,6 +162,7 @@ class WallboxPrioritySwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs):
         self._data._wallbox_priority = True
+        await self._data.async_save_settings()
         self._data._wallbox_wait_start = None  # Reset wallbox wait timer to allow immediate priority
         self._data._last_wallbox_pause_attempt = datetime.min  # Reset last pause attempt to allow immediate action
         self._data._wallbox_power_history.clear()  # Clear power history to allow immediate stability assessment
@@ -170,6 +175,7 @@ class WallboxPrioritySwitch(SwitchEntity):
 
     async def async_turn_off(self, **kwargs):
         self._data._wallbox_priority = False
+        await self._data.async_save_settings()
         self._data._wallbox_charge_paused = False  # Release Batteries from blockade
         self._data._last_wallbox_pause_attempt = datetime.min  # Reset last pause attempt to allow immediate action
         self._data._wallbox_power_history.clear()  # Clear power history to allow immediate stability assessment
@@ -217,6 +223,7 @@ class BlockDischargingCCSwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs):
         self._data._block_discharging_while_carcharging = True
+        await self._data.async_save_settings()
         self.async_write_ha_state()
         async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
         if hasattr(self._data, "async_request_update"):
@@ -224,6 +231,7 @@ class BlockDischargingCCSwitch(SwitchEntity):
 
     async def async_turn_off(self, **kwargs):
         self._data._block_discharging_while_carcharging = False
+        await self._data.async_save_settings()
         self.async_write_ha_state()
         async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
         if hasattr(self._data, "async_request_update"):

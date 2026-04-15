@@ -124,6 +124,33 @@ After installation you can add the integration via the Home Assistant UI:
 
 ---
 
+## Per-SoC charge/discharge caps
+
+You can configure up to 5 charge-level caps and 5 discharge-level caps to limit the maximum power commanded to each battery depending on its State of Charge (SoC). This helps protect battery lifetime by reducing charge/discharge currents near the top and bottom of the SoC range.
+
+Default example values (these are configurable in the integration options):
+
+- Charge caps (applied when charging, checked from highest SoC down):
+  - `charge_power_level_1` (SOC >= 98%): 1500 W
+  - `charge_power_level_2` (SOC >= 95%): 1800 W
+  - `charge_power_level_3` (SOC >= 91%): 2000 W
+  - `charge_power_level_4` (SOC >= 86%): 2200 W
+  - `charge_power_level_5` (SOC >= 80%): 2400 W
+
+- Discharge caps (applied when discharging, checked from lowest SoC up):
+  - `discharge_power_level_1` (SOC <= 13%): 1500 W
+  - `discharge_power_level_2` (SOC <= 15%): 1800 W
+  - `discharge_power_level_3` (SOC <= 19%): 2000 W
+  - `discharge_power_level_4` (SOC <= 25%): 2200 W
+  - `discharge_power_level_5` (SOC <= 30%): 2400 W
+
+How these caps are used:
+
+- During distribution the coordinator computes a per-battery cap from the configured level values based on each battery's current SoC. The computed cap is also bounded by the global `Max Charge Power` / `Max Discharge Power` settings.
+- The requested power is then allocated among the selected batteries while respecting the per-battery caps (the allocation is performed iteratively so batteries hitting their cap are not over-supplied and remaining power flows to other batteries).
+- If a battery reaches its configured SoC limit (min/max), it will be excluded from the priority list and the priority will be recalculated immediately so another battery can take over.
+
+
 ## PID control (what it is and how the parameters work)
 
 PID control is a feedback control method. In this integration it is used to continuously adjust the battery charge/discharge power so that the measured *real grid power* approaches a target value of `0W`.
