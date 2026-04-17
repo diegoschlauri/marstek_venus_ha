@@ -815,7 +815,7 @@ class MarstekCoordinator:
                 self._pid_suspend_direction = PowerDir.NEUTRAL
 
             _LOGGER.debug("PID input grid power: %sW (target=0W)", round(smoothed_grid_power, 2))
-            await self._pid_control_step(smoothed_grid_power)
+            await self._pid_control_step(smoothed_grid_power, real_power)
             return
 
         # Get battery priority
@@ -832,13 +832,16 @@ class MarstekCoordinator:
             # Distribute power among batteries via Modbus control
             await self._distribute_power(real_power, number_of_batteries)
 
-    async def _pid_control_step(self, real_power: float) -> None:
-        """Run one PID control step to drive real_power towards 0W."""
+    async def _pid_control_step(self, smoothed_grid_power: float, real_power: float) -> None:
+        """Run one PID control step to drive smoothed_grid_power towards 0W."""
         # Error is defined such that:
-        # - Surplus (real_power < 0) -> positive error -> positive output -> charging
-        # - Import  (real_power > 0) -> negative error -> negative output -> discharging
-        error = -float(real_power)
+        # - Surplus (smoothed_grid_power < 0) -> positive error -> positive output -> charging
+        # - Import  (smoothed_grid_power > 0) -> negative error -> negative output -> discharging
+        error = -float(smoothed_grid_power)
         now = datetime.now()
+
+        min_surplus_for_charging = self.config.get(CONF_MIN_SURPLUS, 50)
+        min_consumption_for_discharging = self.config.get(CONF_MIN_CONSUMPTION, 50)
 
         if self._pid_prev_ts is None:
             dt = 0.0
@@ -849,15 +852,17 @@ class MarstekCoordinator:
         if dt > 0 and self._pid_prev_error is not None:
             derivative = (error - self._pid_prev_error) / dt
 
-        # If there are no batteries available for the intended direction,
-        # avoid integrating the PID (which would grow while there is nothing
-        # to command). Determine intended direction and update priority so
-        # availability is current.
+        # NEU: Die Richtung wird NICHT mehr vom Error bestimmt, 
+        # sondern vom tatsächlichen Fluss am Hausanschluss - Batterien.
         intended_direction = PowerDir.NEUTRAL
-        if error > 0:
+        if real_power < -float(min_surplus_for_charging):  # Tatsächlicher Überschuss (Einspeisung) -> Laden
             intended_direction = PowerDir.CHARGE
-        elif error < 0:
+        elif real_power > float(min_consumption_for_discharging): # Tatsächlicher Bezug -> Entladen
             intended_direction = PowerDir.DISCHARGE
+        else:
+            # Wenn wir sehr nah an 0 sind, behalten wir die letzte Richtung bei,
+            # um "Zappeln" der Prioritätsliste zu vermeiden.
+            intended_direction = self._last_power_direction
 
         # Ensure priority is up to date for this direction
         await self._update_battery_priority_if_needed(power_direction=intended_direction)
@@ -1652,17 +1657,17 @@ class MarstekCoordinator:
                 round(abs_power, 0),
             )
 
-        min_surplus_for_chargin = self.config.get(CONF_MIN_SURPLUS, 50)
+        min_surplus_for_charging = self.config.get(CONF_MIN_SURPLUS, 50)
         min_consumption_for_discharging = self.config.get(CONF_MIN_CONSUMPTION, 50)
 
         # Check minimum thresholds to activate charging/discharging
-        if self._last_power_direction == PowerDir.CHARGE and abs_power < min_surplus_for_chargin:
+        if self._last_power_direction == PowerDir.CHARGE and abs_power < min_surplus_for_charging:
             self._below_min_charge_count += 1
             self._below_min_discharge_count = 0
             _LOGGER.debug(
                 "Charging power (%sW) below minimum surplus threshold (%sW). below_min_charge_count=%s/%s",
                 round(abs_power, 0),
-                min_surplus_for_chargin,
+                min_surplus_for_charging,
                 self._below_min_charge_count,
                 self._below_min_cycles_to_zero,
             )
@@ -1706,7 +1711,7 @@ class MarstekCoordinator:
 
         # Reset counters when above minimum thresholds
         if (
-            (self._last_power_direction == PowerDir.CHARGE and abs_power >= min_surplus_for_chargin)
+            (self._last_power_direction == PowerDir.CHARGE and abs_power >= min_surplus_for_charging)
             or (self._last_power_direction == PowerDir.DISCHARGE and abs_power >= min_consumption_for_discharging)
         ):
             self._below_min_charge_count = 0
