@@ -871,6 +871,7 @@ class MarstekCoordinator:
         if not self._battery_priority:
             _LOGGER.debug("PID: no available batteries for direction %s — resetting PID state.", intended_direction.name)
             self._reset_pid_state()
+            await self._set_all_batteries_to_zero()  # Ensure batteries are at 0 if PID cannot operate
             return
 
         try:
@@ -1993,53 +1994,58 @@ class MarstekCoordinator:
                 _LOGGER.debug("Ignored error while setting batteries to 0W: %s", res)
 
     async def _disable_modbus_control_mode(self, target_num_batteries: int = 1):
-        """Disable Modbus RS485 control mode based on power stages and battery priority.
+        """Disable Modbus RS485 control mode based on power stages and battery priority with Make-Before-Break logic.
     
         - Power < Stage1: Disable only for highest priority battery, enable for others
         - Stage1 <= Power < Stage2: Disable for top 2 batteries, enable for others
         - Power >= Stage2: Disable for all batteries (full automatic mode)
         - No power direction: Disable for all batteries
+
+        1. Identifies batteries that need to be ADDED to automatic mode.
+        2. Identifies batteries that need to be REMOVED from automatic mode.
+        3. Activates new batteries first, waits 15s, then deactivates old ones.
         """
 
-        # Get list of batteries that should have Modbus control disabled
-        batteries_to_disable_list = [b['id'] for b in self._battery_priority[:target_num_batteries]]
 
-        _LOGGER.debug(f"Disabling Modbus control for {target_num_batteries} batteries: {batteries_to_disable_list}")
+        # Aktuelle Prioritätsliste IDs
+        target_ids = [b['id'] for b in self._battery_priority[:target_num_batteries]]
 
-        tasks = []
-        for battery_base_id in self._battery_entities:
-            modbus_control_mode = f"switch.{battery_base_id}_modbus_rs485_control_mode"
+        # 1. Bestimme, welche Batterien aktuell im Automatik-Modus sind (Modbus Switch OFF)
+        current_auto_ids = []
+        for b_id in self._battery_entities:
+            state = self.hass.states.get(f"switch.{b_id}_modbus_rs485_control_mode")
+            if state and state.state == "off":  # off bedeutet Automatik aktiv
+                current_auto_ids.append(b_id)
+
+        # Batterien, die NEU in den Automatik-Modus sollen
+        to_activate_auto = [bid for bid in target_ids if bid not in current_auto_ids]
+        # Batterien, die aus dem Automatik-Modus RAUS sollen (zurück auf Manual/Forcible)
+        to_deactivate_auto = [bid for bid in current_auto_ids if bid not in target_ids]
+
+
+        # --- SCHRITT 1: Neue Batterien zuerst aktivieren ---
+        if to_activate_auto:
+            _LOGGER.debug("CT-Mode: Activating additional batteries for automatic mode: %s", to_activate_auto)
+            for b_id in to_activate_auto:
+                modbus_control_mode = f"switch.{b_id}_modbus_rs485_control_mode"
+                await self.hass.services.async_call("switch", "turn_off", {"entity_id": modbus_control_mode}, blocking=True)
             
-            if battery_base_id in batteries_to_disable_list:
-                # Disable Modbus control (turn off) - set to automatic
-                if self.hass.services.has_service("switch", "turn_off"):
-                    tasks.append(
-                        self.hass.services.async_call(
-                            "switch",
-                            "turn_off",
-                            {"entity_id": modbus_control_mode},
-                            blocking=True,
-                        )
-                    )
-            else:
-                # Enable Modbus control (turn on) - keep in manual/forcible mode
-                if self.hass.services.has_service("switch", "turn_on"):
-                    tasks.append(
-                        self.hass.services.async_call(
-                            "switch",
-                            "turn_on",
-                            {"entity_id": modbus_control_mode},
-                            blocking=True,
-                        )
-                    )
-                tasks.append(self._set_battery_power(battery_base_id, 0, 0)) # Set power to 0 for batteries not in control
+            # Wenn wir Batterien hinzugefügt haben, warten wir 10 Sekunden, bevor wir andere abschalten
+            if to_deactivate_auto:
+                _LOGGER.debug("CT-Mode: Waiting 10s for power stabilization before deactivating old batteries...")
+                await asyncio.sleep(15)
 
-        if not tasks:
-            return
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for res in results:
-            if isinstance(res, Exception):
-                _LOGGER.debug("Ignored error while disabling modbus control mode: %s", res)
+        # --- SCHRITT 2: Alte Batterien deaktivieren (auf Manual/Forcible zurücksetzen) ---
+        if to_deactivate_auto:
+            _LOGGER.debug("CT-Mode: Returning batteries to manual/forcible mode: %s", to_deactivate_auto)
+            for b_id in to_deactivate_auto:
+                modbus_control_mode = f"switch.{b_id}_modbus_rs485_control_mode"
+                # Erst Modbus-Steuerung wieder an
+                await self.hass.services.async_call("switch", "turn_on", {"entity_id": modbus_control_mode}, blocking=True)
+                # Dann auf 0W setzen, damit sie nicht "irgendwas" machen
+                await self._set_battery_power(b_id, 0, 0)
+
+        _LOGGER.debug(f"CT-Mode distribution finished. Active in Auto: {target_ids}")
 
     def _get_effective_update_interval(self) -> int:
         """Calculate the effective update interval based on CT-Mode and wallbox activity."""
