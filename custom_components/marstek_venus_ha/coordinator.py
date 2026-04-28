@@ -24,17 +24,10 @@ from .const import (
     CONF_MIN_SURPLUS,
     CONF_MIN_CONSUMPTION,
     CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING,
-    CONF_BATTERY_1_ENTITY,
-    CONF_BATTERY_2_ENTITY,
-    CONF_BATTERY_3_ENTITY,
     CONF_MIN_SOC,
     CONF_MAX_SOC,
     CONF_MAX_DISCHARGE_POWER,
     CONF_MAX_CHARGE_POWER,
-    CONF_POWER_STAGE_DISCHARGE_1,
-    CONF_POWER_STAGE_DISCHARGE_2,
-    CONF_POWER_STAGE_CHARGE_1,
-    CONF_POWER_STAGE_CHARGE_2,
     CONF_POWER_STAGE_OFFSET,
     CONF_PRIORITY_INTERVAL,
     CONF_WALLBOX_POWER_SENSOR,
@@ -193,13 +186,34 @@ class MarstekCoordinator:
         self._below_min_discharge_count = 0
 
         # Collect battery entities
-        self._battery_entities = [
-            b for b in [
-                self.config.get(CONF_BATTERY_1_ENTITY),
-                self.config.get(CONF_BATTERY_2_ENTITY),
-                self.config.get(CONF_BATTERY_3_ENTITY),
-            ] if b
-        ]
+        self._battery_count = int(self.config.get(CONF_BATTERY_COUNT, 1))
+        self._batteries = []
+
+        for i in range(1, self._battery_count + 1):
+            # Hole die vom Nutzer ausgewählte Entität
+            ac_power_ent = self.config.get(f"battery_{i}_ac_power_entity")
+            
+            # Wenn sie existiert, füge das komplette Batterie-Set hinzu
+            if ac_power_ent:
+                self._batteries.append({
+                    "id": f"battery_{i}",  # Eine interne ID, nur fürs Logging und die Prio-Liste
+                    "ac_power": ac_power_ent,
+                    "soc": self.config.get(f"battery_{i}_soc_entity"),
+                    "charge_power": self.config.get(f"battery_{i}_charge_power_entity"),
+                    "discharge_power": self.config.get(f"battery_{i}_discharge_power_entity"),
+                    "force_mode": self.config.get(f"battery_{i}_force_mode_entity"),
+                    "rs485_mode": self.config.get(f"battery_{i}_rs485_mode_entity"),
+                })
+        
+        # Get Powerstages
+        self._power_stages = []
+        if self._battery_count > 1:
+            for i in range(1, self._battery_count):
+                self._power_stages.append({
+                    "id": f"powerstage_{i}_to_{i+1}",
+                    "value": self.config.get(f"powerstage_{i}_to_{i+1}") 
+                })
+
     
     async def async_load_settings(self) -> None:
         """Fetch settings from the Store helper."""
@@ -615,10 +629,12 @@ class MarstekCoordinator:
         if grid_power_sensor:
             wait_entities.append(grid_power_sensor)
 
-        for key in (CONF_BATTERY_1_ENTITY, CONF_BATTERY_2_ENTITY, CONF_BATTERY_3_ENTITY):
-            ent = self.config.get(key)
-            if ent:
-                wait_entities.append(ent)
+        for batt in self._batteries:
+            wait_entities.extend([
+                batt["ac_power"], batt["soc"], batt["charge_power"], 
+                batt["discharge_power"], batt["force_mode"], batt["rs485_mode"]
+            ])
+        wait_entities = [e for e in wait_entities if e]
 
         wallbox_cable_sensor = self.config.get(CONF_WALLBOX_CABLE_SENSOR)
         if wallbox_cable_sensor:
@@ -645,8 +661,8 @@ class MarstekCoordinator:
             # CT-Mode: Disable RS485 control mode (use automatic mode)
             if self._ct_mode:
                 _LOGGER.info("CT-Mode enabled. Disabling RS485 Modbus control mode (setting batteries to automatic).")
-                for battery_base_id in self._battery_entities:
-                    modbus_control_mode = f"switch.{battery_base_id}_modbus_rs485_control_mode"
+                for batt in self._batteries:
+                    modbus_control_mode = switch.batt["rs485_mode"]
                     await self.hass.services.async_call("switch", "turn_off", {"entity_id": modbus_control_mode}, blocking=True)
             else:
                 _LOGGER.info("CT-Mode disabled. Batteries remain in manual/forcible mode.")
@@ -1059,7 +1075,7 @@ class MarstekCoordinator:
 
         # Get the current power of all batteries
         battery_powers: dict[str, float | None] = {
-            b: self._get_float_state(f"sensor.{b}_ac_power") for b in self._battery_entities
+            batt["id"]: self._get_float_state(batt["ac_power"]) for batt in self._batteries
         }
         total_battery_power = sum(p for p in battery_powers.values() if p is not None)
         
@@ -1403,19 +1419,22 @@ class MarstekCoordinator:
         
         available_batteries = []
         missing_soc: list[str] = []
-        for base_entity_id in self._battery_entities:
-            soc = self._get_float_state(f"sensor.{base_entity_id}_battery_soc")
+        for batt in self._batteries:
+            soc = self._get_float_state(batt["soc"])
             if soc is None:
-                missing_soc.append(base_entity_id)
+                missing_soc.append(batt["id"])
                 continue
 
+            batt_copy = dict(batt)
+            batt_copy["current_soc"] = soc
+
             if power_direction == PowerDir.CHARGE and soc <= max_soc:
-                available_batteries.append({"id": base_entity_id, "soc": soc})
+                available_batteries.append(batt_copy)
             elif power_direction == PowerDir.DISCHARGE and soc >= min_soc:
-                available_batteries.append({"id": base_entity_id, "soc": soc})
+                available_batteries.append(batt_copy)
 
         is_reverse = (power_direction == PowerDir.DISCHARGE)
-        self._battery_priority = sorted(available_batteries, key=lambda x: x['soc'], reverse=is_reverse)
+        self._battery_priority = sorted(available_batteries, key=lambda x: x['current_soc'], reverse=is_reverse)
         _LOGGER.debug(f"New battery priority: {self._battery_priority}")
         if missing_soc:
             _LOGGER.debug("Battery SoC unavailable for priority calculation: %s", missing_soc)
@@ -1423,13 +1442,9 @@ class MarstekCoordinator:
     def _get_desired_number_of_batteries(self, power: float) -> int:
         # Get the current allow_charging and allow_discharging states
         abs_power = abs(power)
-        stage_offset = self.config.get(CONF_POWER_STAGE_OFFSET, 50)
-        if self._last_power_direction == PowerDir.DISCHARGE: #Currently Discharging
-            stage1 = self.config.get(CONF_POWER_STAGE_DISCHARGE_1)
-            stage2 = self.config.get(CONF_POWER_STAGE_DISCHARGE_2)
-        else:
-            stage1 = self.config.get(CONF_POWER_STAGE_CHARGE_1)
-            stage2 = self.config.get(CONF_POWER_STAGE_CHARGE_2)
+        stage_offset = self.config.get(CONF_POWER_STAGE_OFFSET, 300)
+        
+
         
         num_available = len(self._battery_priority)
         if num_available == 0:
@@ -1438,9 +1453,8 @@ class MarstekCoordinator:
         
         # 1. Ermittle die Anzahl der Batterien, die aktuell Leistung liefern/aufnehmen
         num_currently_active = 0
-        for b_id in self._battery_entities:
-            power_state = self._get_float_state(f"sensor.{b_id}_ac_power")
-            # Zähle Batterien mit mehr als 10W (Toleranz für Rauschen)
+        for batt in self._batteries:
+            power_state = self._get_float_state(batt["ac_power"])
             if power_state is not None and abs(power_state) > 10:
                 num_currently_active += 1
 
@@ -1529,8 +1543,12 @@ class MarstekCoordinator:
                 pass
 
         # Helper to compute cap for a battery based on its SoC and direction
-        def _cap_for_batt(base_entity_id: str) -> int:
-            soc = self._get_float_state(f"sensor.{base_entity_id}_battery_soc")
+        def _cap_for_batt(batt_id: str) -> int:
+            batt = next((b for b in self._batteries if b["id"] == batt_id), None)
+            if not batt:
+                 return int(max_charge_power) if direction == PowerDir.CHARGE else int(max_discharge_power)
+                 
+            soc = self._get_float_state(batt["soc"])            
             if soc is None:
                 return int(max_charge_power) if direction == PowerDir.CHARGE else int(max_discharge_power)
             if direction == PowerDir.CHARGE:
@@ -1592,7 +1610,7 @@ class MarstekCoordinator:
 
         if target_num_batteries < 0:
             target_num_batteries = 0
-        max_batt = len(self._battery_entities)
+        max_batt = len(self._batteries)
         if target_num_batteries > max_batt:
             target_num_batteries = max_batt
 
@@ -1625,7 +1643,7 @@ class MarstekCoordinator:
                     grid_power = 0.0
 
                 battery_powers: dict[str, float | None] = {
-                    b: self._get_float_state(f"sensor.{b}_ac_power") for b in self._battery_entities
+                    b["id"]: self._get_float_state(b["ac_power"]) for b in self._batteries
                 }
                 total_battery_power = sum(p for p in battery_powers.values() if p is not None)
 
@@ -1886,18 +1904,19 @@ class MarstekCoordinator:
             allocations,
         )
 
-        for battery_base_id in self._battery_entities:
-            if battery_base_id in allocations and allocations[battery_base_id] > 0:
-                await self._set_battery_power(battery_base_id, allocations[battery_base_id], self._last_power_direction)
+        for batt in self._batteries:
+            batt_id = batt["id"]
+            if batt_id in allocations and allocations[batt_id] > 0:
+                await self._set_battery_power(batt, allocations[batt_id], self._last_power_direction)
             else:
-                await self._set_battery_power(battery_base_id, 0, 0)
+                await self._set_battery_power(batt, 0, 0)
 
-    async def _set_battery_power(self, base_entity_id: str, power: int, direction: int):
+    async def _set_battery_power(self, batt: dict, power: int, direction: int):
         """Set the charge or discharge power for a single battery."""
-        charge_entity = f"number.{base_entity_id}_modbus_set_forcible_charge_power"
-        discharge_entity = f"number.{base_entity_id}_modbus_set_forcible_discharge_power"
-        force_mode= f"select.{base_entity_id}_modbus_force_mode"
-        modbus_control_mode = f"switch.{base_entity_id}_modbus_rs485_control_mode"
+        charge_entity = batt["charge_power"]
+        discharge_entity = batt["discharge_power"]
+        force_mode = batt["force_mode"]
+        modbus_control_mode = batt["rs485_mode"]
         # Ensure Modbus control mode is set to 'forcible'
         await self._async_call_cached(
             "switch",
@@ -1985,7 +2004,7 @@ class MarstekCoordinator:
     async def _set_all_batteries_to_zero(self):
         """Set all configured batteries power to 0."""
         _LOGGER.debug("Setting all batteries to 0W.")
-        tasks = [self._set_battery_power(b_id, 0, 0) for b_id in self._battery_entities]
+        tasks = [self._set_battery_power(batt, 0, 0) for batt in self._batteries]
         if not tasks:
             return
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -2012,10 +2031,10 @@ class MarstekCoordinator:
 
         # 1. Bestimme, welche Batterien aktuell im Automatik-Modus sind (Modbus Switch OFF)
         current_auto_ids = []
-        for b_id in self._battery_entities:
-            state = self.hass.states.get(f"switch.{b_id}_modbus_rs485_control_mode")
-            if state and state.state == "off":  # off bedeutet Automatik aktiv
-                current_auto_ids.append(b_id)
+        for batt in self._batteries:
+            state = self.hass.states.get(batt["rs485_mode"])
+            if state and state.state == "off":
+                current_auto_ids.append(batt["id"])
 
         # Batterien, die NEU in den Automatik-Modus sollen
         to_activate_auto = [bid for bid in target_ids if bid not in current_auto_ids]
@@ -2026,10 +2045,10 @@ class MarstekCoordinator:
         # --- SCHRITT 1: Neue Batterien zuerst aktivieren ---
         if to_activate_auto:
             _LOGGER.debug("CT-Mode: Activating additional batteries for automatic mode: %s", to_activate_auto)
-            for b_id in to_activate_auto:
-                modbus_control_mode = f"switch.{b_id}_modbus_rs485_control_mode"
-                await self.hass.services.async_call("switch", "turn_off", {"entity_id": modbus_control_mode}, blocking=True)
-            
+            for batt_id in to_activate_auto:
+                batt = next((b for b in self._batteries if b["id"] == batt_id), None)
+                if batt:
+                    await self.hass.services.async_call("switch", "turn_off", {"entity_id": batt["rs485_mode"]}, blocking=True)
             # Wenn wir Batterien hinzugefügt haben, warten wir 10 Sekunden, bevor wir andere abschalten
             if to_deactivate_auto:
                 _LOGGER.debug("CT-Mode: Waiting 10s for power stabilization before deactivating old batteries...")
@@ -2038,12 +2057,11 @@ class MarstekCoordinator:
         # --- SCHRITT 2: Alte Batterien deaktivieren (auf Manual/Forcible zurücksetzen) ---
         if to_deactivate_auto:
             _LOGGER.debug("CT-Mode: Returning batteries to manual/forcible mode: %s", to_deactivate_auto)
-            for b_id in to_deactivate_auto:
-                modbus_control_mode = f"switch.{b_id}_modbus_rs485_control_mode"
-                # Erst Modbus-Steuerung wieder an
-                await self.hass.services.async_call("switch", "turn_on", {"entity_id": modbus_control_mode}, blocking=True)
-                # Dann auf 0W setzen, damit sie nicht "irgendwas" machen
-                await self._set_battery_power(b_id, 0, 0)
+            for batt_id in to_deactivate_auto:
+                batt = next((b for b in self._batteries if b["id"] == batt_id), None)
+                if batt:
+                    await self.hass.services.async_call("switch", "turn_on", {"entity_id": batt["rs485_mode"]}, blocking=True)
+                    await self._set_battery_power(batt, 0, 0)
 
         _LOGGER.debug(f"CT-Mode distribution finished. Active in Auto: {target_ids}")
 

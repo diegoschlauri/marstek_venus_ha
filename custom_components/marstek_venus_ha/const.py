@@ -17,17 +17,10 @@ CONF_ALLOW_DISCHARGING_TO = "allow_discharging_to"
 CONF_MIN_SURPLUS = "min_surplus"
 CONF_MIN_CONSUMPTION = "min_consumption"
 CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING = "max_limit_breaches_before_zeroing"
-CONF_BATTERY_1_ENTITY = "battery_1_entity"
-CONF_BATTERY_2_ENTITY = "battery_2_entity"
-CONF_BATTERY_3_ENTITY = "battery_3_entity"
 CONF_MIN_SOC = "min_soc"
 CONF_MAX_SOC = "max_soc"
 CONF_MAX_DISCHARGE_POWER = "max_discharge_power"
 CONF_MAX_CHARGE_POWER = "max_charge_power"
-CONF_POWER_STAGE_DISCHARGE_1 = "power_stage_discharge_1"
-CONF_POWER_STAGE_DISCHARGE_2 = "power_stage_discharge_2"
-CONF_POWER_STAGE_CHARGE_1 = "power_stage_charge_1"
-CONF_POWER_STAGE_CHARGE_2 = "power_stage_charge_2"
 CONF_POWER_STAGE_OFFSET = "power_stage_offset"
 CONF_PRIORITY_INTERVAL = "priority_interval"
 CONF_WALLBOX_POWER_SENSOR = "wallbox_power_sensor"
@@ -47,6 +40,9 @@ CONF_PID_ENABLED = "pid_enabled"
 CONF_PID_KP = "pid_kp"
 CONF_PID_KI = "pid_ki"
 CONF_PID_KD = "pid_kd"
+# New Battery Configuration
+CONF_BATTERY_COUNT = "battery_count"
+
 # Default values
 DEFAULT_CT_MODE = False
 DEFAULT_SMOOTHING_SECONDS = 0
@@ -61,10 +57,6 @@ DEFAULT_MIN_SOC = 12
 DEFAULT_MAX_SOC = 100
 DEFAULT_MAX_DISCHARGE_POWER = 2500
 DEFAULT_MAX_CHARGE_POWER = 2500
-DEFAULT_POWER_STAGE_DISCHARGE_1 = 1400
-DEFAULT_POWER_STAGE_DISCHARGE_2 = 2000
-DEFAULT_POWER_STAGE_CHARGE_1 = 1800
-DEFAULT_POWER_STAGE_CHARGE_2 = 3600
 DEFAULT_POWER_STAGE_OFFSET = 300
 DEFAULT_PRIORITY_INTERVAL = 15
 # Charge level power caps (5 levels)

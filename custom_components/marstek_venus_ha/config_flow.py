@@ -69,26 +69,27 @@ from .const import (
     DEFAULT_PID_KP,
     DEFAULT_PID_KI,
     DEFAULT_PID_KD,
-        CONF_CHARGE_POWER_LEVEL_1,
-        CONF_CHARGE_POWER_LEVEL_2,
-        CONF_CHARGE_POWER_LEVEL_3,
-        CONF_CHARGE_POWER_LEVEL_4,
-        CONF_CHARGE_POWER_LEVEL_5,
-        CONF_DISCHARGE_POWER_LEVEL_1,
-        CONF_DISCHARGE_POWER_LEVEL_2,
-        CONF_DISCHARGE_POWER_LEVEL_3,
-        CONF_DISCHARGE_POWER_LEVEL_4,
-        CONF_DISCHARGE_POWER_LEVEL_5,
-        DEFAULT_CHARGE_POWER_LEVEL_1,
-        DEFAULT_CHARGE_POWER_LEVEL_2,
-        DEFAULT_CHARGE_POWER_LEVEL_3,
-        DEFAULT_CHARGE_POWER_LEVEL_4,
-        DEFAULT_CHARGE_POWER_LEVEL_5,
-        DEFAULT_DISCHARGE_POWER_LEVEL_1,
-        DEFAULT_DISCHARGE_POWER_LEVEL_2,
-        DEFAULT_DISCHARGE_POWER_LEVEL_3,
-        DEFAULT_DISCHARGE_POWER_LEVEL_4,
-        DEFAULT_DISCHARGE_POWER_LEVEL_5,
+    CONF_CHARGE_POWER_LEVEL_1,
+    CONF_CHARGE_POWER_LEVEL_2,
+    CONF_CHARGE_POWER_LEVEL_3,
+    CONF_CHARGE_POWER_LEVEL_4,
+    CONF_CHARGE_POWER_LEVEL_5,
+    CONF_DISCHARGE_POWER_LEVEL_1,
+    CONF_DISCHARGE_POWER_LEVEL_2,
+    CONF_DISCHARGE_POWER_LEVEL_3,
+    CONF_DISCHARGE_POWER_LEVEL_4,
+    CONF_DISCHARGE_POWER_LEVEL_5,
+    DEFAULT_CHARGE_POWER_LEVEL_1,
+    DEFAULT_CHARGE_POWER_LEVEL_2,
+    DEFAULT_CHARGE_POWER_LEVEL_3,
+    DEFAULT_CHARGE_POWER_LEVEL_4,
+    DEFAULT_CHARGE_POWER_LEVEL_5,
+    DEFAULT_DISCHARGE_POWER_LEVEL_1,
+    DEFAULT_DISCHARGE_POWER_LEVEL_2,
+    DEFAULT_DISCHARGE_POWER_LEVEL_3,
+    DEFAULT_DISCHARGE_POWER_LEVEL_4,
+    DEFAULT_DISCHARGE_POWER_LEVEL_5,
+    CONF_BATTERY_COUNT
 )
 
 class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -104,7 +105,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_batteries()
 
         data_schema = vol.Schema(
-            {
+            {   vol.Required(CONF_BATTERY_COUNT, default=1): vol.All(vol.Coerce(int), vol.Range(min=1, max=6)),
                 vol.Required(CONF_CT_MODE, default=DEFAULT_CT_MODE): bool,
                 vol.Required(CONF_GRID_POWER_SENSOR): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
@@ -129,48 +130,48 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_batteries(self, user_input=None):
-        """Battery configuration step."""
+        """Battery configuration step. Create Dropdown for number of batteries."""
         errors = {}
-        placeholders: dict[str, str] = {"missing": ""}
+        battery_count = self._data.get(CONF_BATTERY_COUNT, 1)
+        
         if user_input is not None:
-            missing = self._validate_battery_entities(user_input)
-            if missing:
-                errors["base"] = "missing_battery_entities"
-                placeholders["missing"] = ", ".join(missing)
-            else:
-                self._data.update(user_input)
-                return await self.async_step_wallbox()
+            self._data.update(user_input)
+            return await self.async_step_wallbox()
+        
+        # Generate selects for selected number of batteries
+        for i in range(1, battery_count + 1):
+            schema_dict[vol.Required(f"battery_{i}_ac_power_entity")] = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
+            schema_dict[vol.Required(f"battery_{i}_soc_entity")] = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
+            schema_dict[vol.Required(f"battery_{i}_charge_power_entity")] = selector.EntitySelector(selector.EntitySelectorConfig(domain="number"))
+            schema_dict[vol.Required(f"battery_{i}_discharge_power_entity")] = selector.EntitySelector(selector.EntitySelectorConfig(domain="number"))
+            schema_dict[vol.Required(f"battery_{i}_force_mode_entity")] = selector.EntitySelector(selector.EntitySelectorConfig(domain="select"))
+            schema_dict[vol.Required(f"battery_{i}_rs485_mode_entity")] = selector.EntitySelector(selector.EntitySelectorConfig(domain="switch"))
 
-        data_schema = vol.Schema(
-            {
-                vol.Required(CONF_BATTERY_1_ENTITY): str,
-                vol.Optional(CONF_BATTERY_2_ENTITY, default=""): str,
-                vol.Optional(CONF_BATTERY_3_ENTITY, default=""): str,
-                vol.Required(CONF_MIN_SOC, default=DEFAULT_MIN_SOC): int,
-                vol.Required(CONF_MAX_SOC, default=DEFAULT_MAX_SOC): int,
-                vol.Required(CONF_MAX_DISCHARGE_POWER, default=DEFAULT_MAX_DISCHARGE_POWER): int,
-                vol.Required(CONF_MAX_CHARGE_POWER, default=DEFAULT_MAX_CHARGE_POWER): int,
-                vol.Required(CONF_CHARGE_POWER_LEVEL_1, default=DEFAULT_CHARGE_POWER_LEVEL_1): int,
-                vol.Required(CONF_CHARGE_POWER_LEVEL_2, default=DEFAULT_CHARGE_POWER_LEVEL_2): int,
-                vol.Required(CONF_CHARGE_POWER_LEVEL_3, default=DEFAULT_CHARGE_POWER_LEVEL_3): int,
-                vol.Required(CONF_CHARGE_POWER_LEVEL_4, default=DEFAULT_CHARGE_POWER_LEVEL_4): int,
-                vol.Required(CONF_CHARGE_POWER_LEVEL_5, default=DEFAULT_CHARGE_POWER_LEVEL_5): int,
-                vol.Required(CONF_DISCHARGE_POWER_LEVEL_1, default=DEFAULT_DISCHARGE_POWER_LEVEL_1): int,
-                vol.Required(CONF_DISCHARGE_POWER_LEVEL_2, default=DEFAULT_DISCHARGE_POWER_LEVEL_2): int,
-                vol.Required(CONF_DISCHARGE_POWER_LEVEL_3, default=DEFAULT_DISCHARGE_POWER_LEVEL_3): int,
-                vol.Required(CONF_DISCHARGE_POWER_LEVEL_4, default=DEFAULT_DISCHARGE_POWER_LEVEL_4): int,
-                vol.Required(CONF_DISCHARGE_POWER_LEVEL_5, default=DEFAULT_DISCHARGE_POWER_LEVEL_5): int,
-                vol.Required(CONF_MIN_SURPLUS, default=DEFAULT_MIN_SURPLUS): int,
-                vol.Required(CONF_MIN_CONSUMPTION, default=DEFAULT_MIN_CONSUMPTION): int,
-                vol.Required(CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING, default=DEFAULT_MAX_LIMIT_BREACHES_BEFORE_ZEROING): int,
-                vol.Required(CONF_POWER_STAGE_DISCHARGE_1, default=DEFAULT_POWER_STAGE_DISCHARGE_1): int,
-                vol.Required(CONF_POWER_STAGE_DISCHARGE_2, default=DEFAULT_POWER_STAGE_DISCHARGE_2): int,
-                vol.Required(CONF_POWER_STAGE_CHARGE_1, default=DEFAULT_POWER_STAGE_CHARGE_1): int,
-                vol.Required(CONF_POWER_STAGE_CHARGE_2, default=DEFAULT_POWER_STAGE_CHARGE_2): int,
-                vol.Required(CONF_POWER_STAGE_OFFSET, default=DEFAULT_POWER_STAGE_OFFSET): int,
-                vol.Required(CONF_PRIORITY_INTERVAL, default=DEFAULT_PRIORITY_INTERVAL): int,
-            }
-        )
+        # Generate powerstages based on battery number
+        if battery_count > 1:
+            schema_dict[vol.Required(CONF_POWER_STAGE_OFFSET, default=DEFAULT_POWER_STAGE_OFFSET)] = int
+            for i in range(1, battery_count):
+                schema_dict[vol.Required(f"powerstage_{i}_to_{i+1}")] = int
+
+
+        schema_dict[vol.Required(CONF_MIN_SOC, default=DEFAULT_MIN_SOC)] = int
+        schema_dict[vol.Required(CONF_MAX_SOC, default=DEFAULT_MAX_SOC)] = int
+        schema_dict[vol.Required(CONF_MAX_DISCHARGE_POWER, default=DEFAULT_MAX_DISCHARGE_POWER)] = int
+        schema_dict[vol.Required(CONF_MAX_CHARGE_POWER, default=DEFAULT_MAX_CHARGE_POWER)] = int
+        schema_dict[vol.Required(CONF_CHARGE_POWER_LEVEL_1, default=DEFAULT_CHARGE_POWER_LEVEL_1)] = int
+        schema_dict[vol.Required(CONF_CHARGE_POWER_LEVEL_2, default=DEFAULT_CHARGE_POWER_LEVEL_2)] = int
+        schema_dict[vol.Required(CONF_CHARGE_POWER_LEVEL_3, default=DEFAULT_CHARGE_POWER_LEVEL_3)] = int
+        schema_dict[vol.Required(CONF_CHARGE_POWER_LEVEL_4, default=DEFAULT_CHARGE_POWER_LEVEL_4)] = int
+        schema_dict[vol.Required(CONF_CHARGE_POWER_LEVEL_5, default=DEFAULT_CHARGE_POWER_LEVEL_5)] = int
+        schema_dict[vol.Required(CONF_DISCHARGE_POWER_LEVEL_1, default=DEFAULT_DISCHARGE_POWER_LEVEL_1)] = int
+        schema_dict[vol.Required(CONF_DISCHARGE_POWER_LEVEL_2, default=DEFAULT_DISCHARGE_POWER_LEVEL_2)] = int
+        schema_dict[vol.Required(CONF_DISCHARGE_POWER_LEVEL_3, default=DEFAULT_DISCHARGE_POWER_LEVEL_3)] = int
+        schema_dict[vol.Required(CONF_DISCHARGE_POWER_LEVEL_4, default=DEFAULT_DISCHARGE_POWER_LEVEL_4)] = int
+        schema_dict[vol.Required(CONF_DISCHARGE_POWER_LEVEL_5, default=DEFAULT_DISCHARGE_POWER_LEVEL_5)] = int
+        schema_dict[vol.Required(CONF_MIN_SURPLUS, default=DEFAULT_MIN_SURPLUS)] = int
+        schema_dict[vol.Required(CONF_MIN_CONSUMPTION, default=DEFAULT_MIN_CONSUMPTION)] = int
+        schema_dict[vol.Required(CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING, default=DEFAULT_MAX_LIMIT_BREACHES_BEFORE_ZEROING)] = int
+        schema_dict[vol.Required(CONF_PRIORITY_INTERVAL, default=DEFAULT_PRIORITY_INTERVAL)] = int
 
         return self.async_show_form(
             step_id="batteries",
