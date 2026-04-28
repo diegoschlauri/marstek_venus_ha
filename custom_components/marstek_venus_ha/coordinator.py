@@ -613,94 +613,93 @@ class MarstekCoordinator:
 
         self._pid_suspended = False
         self._pid_suspend_direction = PowerDir.NEUTRAL
-
-        # Wait concurrently for configured entities (avoids additive timeouts)
-        wait_entities = []
+        
+        # 1. Initialize caches and deques
+        self._service_call_cache.clear()
+        _LOGGER.debug(f"Running version {self._manifest_version}")
+        self._below_min_charge_count = 0
+        self._below_min_discharge_count = 0
+        self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
+        self._wallbox_power_history = deque(maxlen=self._get_deque_size("wallbox"))
+        self._last_wallbox_pause_attempt = datetime.min
+        
+        # 2. Register state-change listeners (to ensure we don't miss sensor updates)
+        trigger_entities: list[str] = []
         grid_power_sensor = self.config.get(CONF_GRID_POWER_SENSOR)
         if grid_power_sensor:
-            wait_entities.append(grid_power_sensor)
+            trigger_entities.append(grid_power_sensor)
+        pv_power_sensor = self.config.get(CONF_PV_POWER_SENSOR)
+        if pv_power_sensor:
+            trigger_entities.append(pv_power_sensor)
+        wb_cable_sensor = self.config.get(CONF_WALLBOX_CABLE_SENSOR)
+        if wb_cable_sensor:
+            trigger_entities.append(wb_cable_sensor)
 
-        for batt in self._batteries:
-            wait_entities.extend([
-                batt["ac_power"], batt["soc"], batt["charge_power"], 
-                batt["discharge_power"], batt["force_mode"], batt["rs485_mode"]
-            ])
-        wait_entities = [e for e in wait_entities if e]
+        @callback
+        def _on_state_change(event):
+            entity_id = event.data.get("entity_id")
+            def _schedule_update() -> None:
+                self.hass.async_create_task(
+                    self.async_request_update(reason=f"state_change:{entity_id}")
+                )
+            self.hass.loop.call_soon_threadsafe(_schedule_update)
 
-        wallbox_cable_sensor = self.config.get(CONF_WALLBOX_CABLE_SENSOR)
-        if wallbox_cable_sensor:
-            wait_entities.append(wallbox_cable_sensor)
+        if trigger_entities:
+            remove = async_track_state_change_event(self.hass, trigger_entities, _on_state_change)
+            self._unsub_listeners.append(remove)
 
-        if wait_entities:
-            # run all waits in parallel; total wait <= max individual timeout (default 60s)
-            await asyncio.gather(*(self.wait_for_entity_available(e) for e in wait_entities))
+        self._is_running = True
+        
+        # 3. Temporarily block the logic for a clean startup
+        self._ready_to_command = False
 
+        async def _delayed_startup_routine():
+            _LOGGER.info("Waiting for Modbus entities to become available...")
             
-        if not self._is_running:
-            self._service_call_cache.clear()
-            _LOGGER.debug(f"Running version {self._manifest_version}")
-            _LOGGER.debug("Service call cache cleared on coordinator start")
-            self._below_min_charge_count = 0
-            self._below_min_discharge_count = 0
-            # Re-initialize deques on start
-            self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
-            self._wallbox_power_history = deque(maxlen=self._get_deque_size("wallbox"))
-            self._last_wallbox_pause_attempt = datetime.min # Reset cooldown on start
-            #Reset Batteries to 0 on Start-Up in background to avoid blocking startup
-            self.hass.async_create_task(self._set_all_batteries_to_zero())            
-            coordinator_update_interval = self.config.get(CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS)
-            # CT-Mode: Disable RS485 control mode (use automatic mode)
+            # Wait for the ac_power sensors of all configured batteries
+            wait_tasks = []
+            for batt in self._batteries:
+                if batt.get("ac_power"):
+                    wait_tasks.append(self.wait_for_entity_available(batt["ac_power"], timeout=30.0))
+            
+            if wait_tasks:
+                await asyncio.gather(*wait_tasks)
+                
+            # Tiny buffer to ensure switches/selects are also ready after the sensor becomes available
+            await asyncio.sleep(2)
+            
+            _LOGGER.info("Modbus entities are ready. Starting Marstek Venus control logic.")
+            
+            # We are now ready to send commands!
+            self._ready_to_command = True
+            
+            # Initially set all batteries to 0W
+            await self._set_all_batteries_to_zero()
+            
+            # CT-Mode Check
             if self._ct_mode:
-                _LOGGER.info("CT-Mode enabled. Disabling RS485 Modbus control mode (setting batteries to automatic).")
+                _LOGGER.info("CT-Mode enabled. Disabling RS485 Modbus control mode.")
                 for batt in self._batteries:
-                    modbus_control_mode = batt["rs485_mode"]
-                    await self.hass.services.async_call("switch", "turn_off", {"entity_id": modbus_control_mode}, blocking=True)
+                    modbus_control_mode = batt.get("rs485_mode")
+                    if modbus_control_mode:
+                        try:
+                            await self.hass.services.async_call("switch", "turn_off", {"entity_id": modbus_control_mode}, blocking=True)
+                        except Exception as e:
+                            _LOGGER.debug(f"Could not disable RS485 mode for {batt['id']}: {e}")
             else:
                 _LOGGER.info("CT-Mode disabled. Batteries remain in manual/forcible mode.")
+                
+            # Request initial update
+            await self.async_request_update(reason="startup")
 
-            coordinator_update_interval = self._get_effective_update_interval()
-            _LOGGER.info(
-                "Starting coordinator in event-driven mode on sensor updates (min interval: %ss)",
-                coordinator_update_interval,
-            )
+        # Start the intelligent startup routine in the background
+        self.hass.async_create_task(_delayed_startup_routine())
 
-            # Subscribe to relevant sensor updates (grid power, PV power, wallbox cable).
-            trigger_entities: list[str] = []
-
-            grid_power_sensor = self.config.get(CONF_GRID_POWER_SENSOR)
-            if grid_power_sensor:
-                trigger_entities.append(grid_power_sensor)
-
-            pv_power_sensor = self.config.get(CONF_PV_POWER_SENSOR)
-            if pv_power_sensor:
-                trigger_entities.append(pv_power_sensor)
-
-            wb_cable_sensor = self.config.get(CONF_WALLBOX_CABLE_SENSOR)
-            if wb_cable_sensor:
-                trigger_entities.append(wb_cable_sensor)
-
-            @callback
-            def _on_state_change(event):
-                entity_id = event.data.get("entity_id")
-
-                def _schedule_update() -> None:
-                    self.hass.async_create_task(
-                        self.async_request_update(reason=f"state_change:{entity_id}")
-                    )
-
-                # Home Assistant may execute state-change callbacks from a non-event-loop thread.
-                # Always schedule the task in a thread-safe way.
-                self.hass.loop.call_soon_threadsafe(_schedule_update)
-
-            if trigger_entities:
-                remove = async_track_state_change_event(self.hass, trigger_entities, _on_state_change)
-                self._unsub_listeners.append(remove)
-
-            # Run one initial update after startup.
-            self.hass.async_create_task(self.async_request_update(reason="startup"))
-
-            self._is_running = True
-            _LOGGER.info("Marstek Venus HA Integration coordinator started (id=%s).", self._instance_id)
+        coordinator_update_interval = self._get_effective_update_interval()
+        _LOGGER.info(
+            "Marstek Venus HA Integration coordinator started (id=%s, min interval: %ss).", 
+            self._instance_id, coordinator_update_interval
+        )
 
     async def async_request_update(self, *, reason: str = "manual") -> None:
         """Request a coordinator update.
@@ -708,7 +707,8 @@ class MarstekCoordinator:
         This is safe to call from automations/services or state-change listeners.
         It enforces a minimum interval between updates and prevents concurrent runs.
         """
-        if not self._is_running:
+        # Blocking updates, while startup or startdelay
+        if not self._is_running or not getattr(self, "_ready_to_command", True):
             return
 
         min_interval = float(self._get_effective_update_interval())
@@ -1973,7 +1973,7 @@ class MarstekCoordinator:
             # Add a small delay to prevent overwhelming the device APIs
             await asyncio.sleep(0.1)
         except Exception as e:
-            _LOGGER.error(f"Failed to set power for {base_entity_id}: {e}")
+            _LOGGER.error(f"Failed to set power for {batt['id']}: {e}")
 
     async def _set_all_batteries_to_zero(self):
         """Set all configured batteries power to 0."""
