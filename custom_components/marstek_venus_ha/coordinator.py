@@ -204,16 +204,6 @@ class MarstekCoordinator:
                     "force_mode": self.config.get(f"battery_{i}_force_mode_entity"),
                     "rs485_mode": self.config.get(f"battery_{i}_rs485_mode_entity"),
                 })
-        
-        # Get Powerstages
-        self._power_stages = []
-        if self._battery_count > 1:
-            for i in range(1, self._battery_count):
-                self._power_stages.append({
-                    "id": f"powerstage_{i}_to_{i+1}",
-                    "value": self.config.get(f"powerstage_{i}_to_{i+1}") 
-                })
-
     
     async def async_load_settings(self) -> None:
         """Fetch settings from the Store helper."""
@@ -1442,9 +1432,6 @@ class MarstekCoordinator:
     def _get_desired_number_of_batteries(self, power: float) -> int:
         # Get the current allow_charging and allow_discharging states
         abs_power = abs(power)
-        stage_offset = self.config.get(CONF_POWER_STAGE_OFFSET, 300)
-        
-
         
         num_available = len(self._battery_priority)
         if num_available == 0:
@@ -1459,50 +1446,38 @@ class MarstekCoordinator:
                 num_currently_active += 1
 
         _LOGGER.debug(f"Hysteresis check: num_available={num_available}, num_currently_active={num_currently_active}, abs_power={abs_power:.0f}W")
+
+        # Startwert ist die aktuell aktive Anzahl (mindestens 1)
+        target_num_batteries = max(1, num_currently_active)
+        stage_offset = self.config.get(CONF_POWER_STAGE_OFFSET, 500)
         
-        # 2. Implementiere Hysterese-Logik basierend auf dem aktuellen Zustand
-        target_num_batteries = 0
+        # 2. Hysterese-Logik dynamisch anwenden
 
-        if num_currently_active <= 1:
-            # Aktuell 0 oder 1 Batterie aktiv. Logik zum HOCHschalten:
+        # HOCHSCHALTEN: Prüfen, ob wir mehr Batterien brauchen
+        while target_num_batteries < num_available:
+            # Hole den dynamischen Schwellenwert (Fallback: i * 1500)
+            threshold = self.config.get(f"powerstage_{target_num_batteries}_to_{target_num_batteries+1}")
+            if threshold is None:
+                threshold = target_num_batteries * 1500
+            
             # Schwelle = STUFE + OFFSET
-            if abs_power > (stage2 + stage_offset):
-                target_num_batteries = 3
-            elif abs_power > (stage1 + stage_offset):
-                target_num_batteries = 2
+            if abs_power > (threshold + stage_offset):
+                target_num_batteries += 1
             else:
-                # Leistung ist unter (stage1 + offset)
-                target_num_batteries = 1
+                break # Wenn die Leistung nicht reicht, brechen wir das Hochschalten ab
 
-        elif num_currently_active == 2:
-            # Aktuell 2 Batterien aktiv. Logik zum HOCH- oder RUNTERschalten:
-            if abs_power > (stage2 + stage_offset):  # HOCHschalten
-                target_num_batteries = 3
-            elif abs_power < (stage1 - stage_offset):  # RUNTERschalten
-                target_num_batteries = 1
-            else:
-                # Bleibe im Hysterese-Bereich: (stage1 - offset) <= power <= (stage2 + offset)
-                target_num_batteries = 2
-
-        else:  # num_currently_active >= 3
-            # Aktuell 3 Batterien aktiv. Logik zum RUNTERschalten:
+        # RUNTERSCHALTEN: Prüfen, ob wir weniger Batterien brauchen
+        while target_num_batteries > 1:
+            # Hole den Schwellenwert der darunterliegenden Stufe
+            threshold = self.config.get(f"powerstage_{target_num_batteries-1}_to_{target_num_batteries}")
+            if threshold is None:
+                threshold = (target_num_batteries - 1) * 1500
+                
             # Schwelle = STUFE - OFFSET
-            if abs_power < (stage1 - stage_offset):
-                target_num_batteries = 1
-            elif abs_power < (stage2 - stage_offset):
-                target_num_batteries = 2
+            if abs_power < (threshold - stage_offset):
+                target_num_batteries -= 1
             else:
-                # Bleibe im Hysterese-Bereich: power >= (stage2 - offset)
-                target_num_batteries = 3
-
-        # Berücksichtige die maximal verfügbaren Batterien (aus der Prioritätenliste)
-        if num_available == 1:
-            target_num_batteries = 1
-        elif num_available == 2:
-            target_num_batteries = min(target_num_batteries, 2)
-        else:
-            # Dies deckt num_available == 3 oder mehr ab
-            target_num_batteries = min(target_num_batteries, 3)
+                break # Wenn die Leistung noch zu hoch ist, bleiben wir auf dieser Stufe
 
         _LOGGER.debug(f"Determined target number of batteries: {target_num_batteries} (Available: {num_available}, Currently Active: {num_currently_active})")
         # Consider per-battery SoC-based caps: if the selected number of
@@ -2014,12 +1989,6 @@ class MarstekCoordinator:
 
     async def _disable_modbus_control_mode(self, target_num_batteries: int = 1):
         """Disable Modbus RS485 control mode based on power stages and battery priority with Make-Before-Break logic.
-    
-        - Power < Stage1: Disable only for highest priority battery, enable for others
-        - Stage1 <= Power < Stage2: Disable for top 2 batteries, enable for others
-        - Power >= Stage2: Disable for all batteries (full automatic mode)
-        - No power direction: Disable for all batteries
-
         1. Identifies batteries that need to be ADDED to automatic mode.
         2. Identifies batteries that need to be REMOVED from automatic mode.
         3. Activates new batteries first, waits 15s, then deactivates old ones.
