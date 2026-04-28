@@ -2,6 +2,8 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg)](https://github.com/hacs/integration)
 
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support%20my%20work-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/huudl)
+
 This is a custom Home Assistant integration for intelligent control of multiple separate battery storage systems. It was originally designed for Marstek Venus E systems, but it can be used with **any battery system** that can be controlled via corresponding entities in Home Assistant.
 
 The integration does not control all batteries at the same time. Instead, it enables them in power levels to maximize efficiency and optimize self-consumption. It includes dynamic battery prioritization based on state of charge (SoC) and an advanced, optional logic for interacting with a wallbox/EV charger.
@@ -23,6 +25,13 @@ The integration does not control all batteries at the same time. Instead, it ena
 * **PV-based charge limiting (optional)**: An optional PV power sensor can be configured to cap commanded charging power to current PV production to avoid charging from the grid due to short sensor glitches.
 
 ---
+
+## Support
+
+If you find this integration helpful and want to support its further development, I'd highly appreciate a coffee! ☕
+
+<a href="https://www.buymeacoffee.com/huudl" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
 
 ## Important prerequisite
 
