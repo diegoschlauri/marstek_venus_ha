@@ -1844,7 +1844,7 @@ class MarstekCoordinator:
                     else:
                         cap = int(max_discharge_power)
                     cap = min(cap, int(max_discharge_power))
-            per_batt_cap[b] = max(0, int(cap))
+            per_batt_cap[b_id] = max(0, int(cap))
 
         # Allocate requested power among active batteries respecting per-battery caps using iterative water-filling
         remaining = int(round(abs_power))
