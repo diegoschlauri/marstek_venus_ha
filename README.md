@@ -2,25 +2,23 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg)](https://github.com/hacs/integration)
 
-This is a custom Home Assistant integration for intelligent control of up to three separate battery storage systems. It was originally designed for Marstek Venus E systems, but it can be used with **any battery system** that can be controlled via corresponding entities in Home Assistant.
+This is a custom Home Assistant integration for intelligent control of multiple separate battery storage systems. It was originally designed for Marstek Venus E systems, but it can be used with **any battery system** that can be controlled via corresponding entities in Home Assistant.
 
 The integration does not control all batteries at the same time. Instead, it enables them in power levels to maximize efficiency and optimize self-consumption. It includes dynamic battery prioritization based on state of charge (SoC) and an advanced, optional logic for interacting with a wallbox/EV charger.
 
-This is a fork of https://github.com/diegoschlauri/marstek_venus_ha with added PID control logic and caching of the HA service calls to avoid too many calls to the batteries. I also translated the README to English to make it easier for non-German speakers to understand.
-Parts of the writing and coding was done with the help of AI tools
-
 ## Key features
 
-* **Flexible number of batteries**: Control one, two, or three batteries.
-* **Power level switching**: Uses one, two, or three batteries depending on demand or surplus.
+* **Flexible number of batteries**: Control any number of batteries (fully scalable via the UI).
+* **Dynamic Power level switching**: Uses one, two, or more batteries depending on demand or surplus. Configurable thresholds determine when to add or remove a battery from the active pool.
 * **Dynamic prioritization**: Smart prioritization. When charging, the emptiest battery is preferred; when discharging, the fullest.
+* **Explicit Entity Selection**: No strict naming conventions required. Select the exact entities for each battery directly via Home Assistant dropdown menus.
 * **Grid power smoothing**: Prevents rapid switching by averaging grid power over a configurable time window.
 * **Optional wallbox integration**: Smart pausing of battery charging during high PV surplus. Charging resumes when the car is full or charging at maximum power to avoid wasting energy.
 * **Configurable limits**: Set upper and lower SoC limits to protect battery lifespan.
 * **Minimum charge/discharge power**: Configurable thresholds that define from which surplus/consumption the batteries start charging/discharging to improve efficiency.
 * **Easy configuration**: Fully configurable via the Home Assistant UI config flow.
 * **PID control**: Optional PID control for precise power regulation.
-* **Service call caching**: Prevents sending the same Home Assistant service call (same entity + same value) too frequently. If set to a value > 0, identical calls are skipped for that many seconds. If set to `0`, identical calls are skipped indefinitely (until the requested value changes).
+* **Service call caching**: Prevents sending the same Home Assistant service call (same entity + same value) too frequently. 
 * **Event-driven control loop**: The coordinator runs on relevant sensor updates (instead of a fixed polling loop) and is throttled by a configurable minimum interval.
 * **PV-based charge limiting (optional)**: An optional PV power sensor can be configured to cap commanded charging power to current PV production to avoid charging from the grid due to short sensor glitches.
 
@@ -30,31 +28,16 @@ Parts of the writing and coding was done with the help of AI tools
 
 This integration does not control the batteries directly via a vendor-specific API. Instead, **you must already have entities in Home Assistant for each battery** in order to:
 
-1.  Read the **state of charge (SoC)** (e.g. `sensor.marstek_l1_battery_soc`).
-2.  Read the **current charge/discharge power** (e.g. `sensor.marstek_l1_ac_power`). A positive value means discharging, a negative value means charging.
-3.  Control the **charge power** (e.g. `number.marstek_l1_modbus_set_forcible_charge_power`) (the ID must be adjusted manually if multiple batteries are used via the Modbus integration).
-4.  Control the **discharge power** (e.g. `number.marstek_l1_modbus_set_forcible_discharge_power`) (the ID must be adjusted manually if multiple batteries are used via the Modbus integration).
-5.  The select for **Force Mode** to control current direction (e.g. `select.marstek_l1_modbus_force_mode`) (the ID must be adjusted manually if multiple batteries are used via the Modbus integration).
-6.  The switch to enable **RS485 Mode** (e.g. `switch.marstek_l1_modbus_rs485_control_mode`) (the ID must be adjusted manually if multiple batteries are used via the Modbus integration).
+1. Read the **state of charge (SoC)** (e.g., `sensor.marstek_l1_battery_soc`).
+2. Read the **current AC power** (e.g., `sensor.marstek_l1_ac_power`). A positive value means discharging, a negative value means charging.
+3. Control the **charge power limit** (e.g., `number.marstek_l1_modbus_set_forcible_charge_power`).
+4. Control the **discharge power limit** (e.g., `number.marstek_l1_modbus_set_forcible_discharge_power`).
+5. Set the **Force Mode** to control current direction (e.g., `select.marstek_l1_modbus_force_mode`).
+6. Toggle the **RS485 Control Mode** (e.g., `switch.marstek_l1_modbus_rs485_control_mode`).
 
+During configuration, you will first choose **how many batteries** you want to control. In the next step, the UI will present you with dropdown menus to **explicitly select these 6 entities for every single battery**. Because you select them manually, there is no strict naming convention you need to follow.
 
-During configuration you provide the **base entity name** for each battery (e.g. `marstek_l1`). The integration derives the names of the required entities by expecting the suffixes `_battery_soc`, `_ac_power`, `_modbus_set_forcible_charge_power`, `_modbus_set_forcible_discharge_power`, `_modbus_force_mode`, and `_modbus_rs485_control_mode`.
-
-As a basis for integrating a Marstek energy storage system, the Modbus integration from https://github.com/ViperRNMC/marstek_venus_modbus was used.
-Depending on the use case it may be useful to reduce the scan intervals (in the settings of the Marstek Venus Modbus integration).
-If multiple batteries are used, this can be done either with multiple Modbus adapters and separate IP addresses.
-
-**Example:**
-If you specify `marstek_l1` as the entity base for the first battery, the integration must be able to find the following entities:
-* `sensor.marstek_l1_battery_soc`
-* `sensor.marstek_l1_ac_power` **(important for the wallbox logic)**
-* `number.marstek_l1_modbus_set_forcible_charge_power`
-* `number.marstek_l1_modbus_set_forcible_discharge_power`
-* `select.marstek_l1_modbus_force_mode`
-* `switch.marstek_l1_modbus_rs485_control_mode`
-
-Make sure these entities exist and are working before setting up the integration. The configuration flow does check if the entities exist and
-you cannot proceed if they are missing. 
+As a basis for integrating a Marstek energy storage system, the Modbus integration from https://github.com/ViperRNMC/marstek_venus_modbus was used. Depending on the use case it may be useful to reduce the scan intervals in the Modbus integration settings.
 
 ---
 
@@ -62,15 +45,15 @@ you cannot proceed if they are missing.
 
 ### Via HACS (recommended)
 
-1.  Add this GitHub repository to HACS as a "Custom repository".
-2.  Search for "Marstek Venus HA" and install the integration.
-3.  Restart Home Assistant.
+1. Add this GitHub repository to HACS as a "Custom repository".
+2. Search for "Marstek Venus HA" and install the integration.
+3. Restart Home Assistant.
 
 ### Manual installation
 
-1.  Download the folder `custom_components/marstek_venus_ha` from this repository.
-2.  Copy it into the `custom_components` directory of your Home Assistant installation.
-3.  Restart Home Assistant.
+1. Download the folder `custom_components/marstek_venus_ha` from this repository.
+2. Copy it into the `custom_components` directory of your Home Assistant installation.
+3. Restart Home Assistant.
 
 ---
 
@@ -78,49 +61,37 @@ you cannot proceed if they are missing.
 
 After installation you can add the integration via the Home Assistant UI:
 
-1.  Go to **Settings > Devices & Services**.
-2.  Click **Add integration** and search for "Marstek Venus HA".
-3.  Follow the configuration dialog. Fields for the wallbox or for batteries 2 and 3 can be left empty to disable the corresponding functionality.
+1. Go to **Settings > Devices & Services**.
+2. Click **Add integration** and search for "Marstek Venus HA".
+3. Follow the configuration dialog. Fields for the wallbox or optional sensors can be left empty to disable the corresponding functionality.
 
 ### Configuration parameters
 
 | Parameter | Description | Example |
 | :--- | :--- | :--- |
-| **CT Mode** | When CT mode is enabled, the power regulation by the Python script is disabled. Only the wallbox logic remains active. If there is enough surplus (> `wallbox_max_surplus`) and a car is present, the controller takes over battery control. Otherwise, control runs via the default Marstek logic. Only enable this parameter if a CT is also configured in the Marstek app. The update interval automatically changes to 10s in CT mode. The power level logic is also active in CT mode. The RS485 parameter controls how many batteries are enabled. | `False` |
-| **Grid connection power sensor ID** | The sensor ID that measures current grid import (+) or export (-) in watts. | `sensor.power_meter_power` |
-| **PV power sensor ID (optional)** | The sensor ID that measures current PV production power in watts (or kW). If configured, battery charging power is capped to this value to avoid charging from the grid when grid power briefly appears negative. | `sensor.pv_power` |
-| **Power smoothing in seconds** | Time window (seconds) used to compute the average grid power. If set to 0, no smoothing is applied and the latest value is used. | `0` |
+| **Number of batteries** | Choose how many battery systems you want to control. | `6` |
+| **CT Mode** | When CT mode is enabled, power regulation by the script is disabled and relies on the default Marstek logic. Only the wallbox logic remains active to override the batteries when the car is charging. | `False` |
+| **Grid power sensor** | The sensor ID that measures current grid import (+) or export (-) in watts. | `sensor.power_meter_power` |
+| **PV power sensor (optional)** | The sensor ID that measures current PV production power in watts. Used to cap battery charging power to avoid grid import glitches. | `sensor.pv_power` |
+| **Smoothing window** | Time window (seconds) used to compute the average grid power. Set to 0 to disable smoothing. | `0` |
 | **Minimum surplus** | Minimum power surplus in watts required to start charging. | `200` |
-| **Minimum import** | Minimum consumption in watts required to start discharging. | `200` |
-| **Maximum import/surplus limit breaches** | Set the max of the counter for allowed surplus/import limit breaches. | `10` |
-| **First battery entity** | Base name of the entities for the first battery. | `marstek_l1` |
-| **Second battery entity (optional)** | Base name for the second battery. Leave empty if not available. | `marstek_l2` |
-| **Third battery entity (optional)** | Base name for the third battery. Leave empty if not available. | `marstek_l3` |
-| **Lower discharge limit of the batteries (%)** | Batteries will no longer discharge once their SoC reaches this value. | `10` |
-| **Upper charge limit of the batteries (%)** | Batteries will no longer charge once their SoC reaches this value. | `100` |
-| **Max Discharge Power (W)** | Maximum discharge power sent to a battery. | `2500` |
-| **Max Charge Power (W)** | Maximum charge power sent to a battery. | `2500` |
-| **First discharge power level (W)** | Grid import at which a second battery is enabled. | `600` |
-| **Second discharge power level (W)** | Grid import at which a third battery is enabled. | `1200` |
-| **First charge power level (W)** | Grid export at which a second battery is enabled. | `2000` |
-| **Second charge power level (W)** | Grid export at which a third battery is enabled. | `4000` |
-| **Power level offset (W)** | Offset used to switch power levels with less toggling. | `300` |
-| **Priority evaluation interval (minutes)** | Interval at which battery priorities are re-evaluated. | `15` |
-| **Wallbox power sensor ID (optional)**| Sensor that measures wallbox charging power. | `sensor.wallbox_power` |
-| **Wallbox minimum surplus (W) (optional)**| If PV surplus exceeds this value, battery charging is paused for car charging. | `1500` |
-| **Wallbox sensor for plugged-in cable (optional)**| A binary sensor (`on`/`off`) that indicates whether a charging cable is connected. | `binary_sensor.wallbox_cable_plugged_in` |
-| **Wallbox power fluctuation (W) for enabling battery charging (optional)**| Tolerance for wallbox power fluctuations. If wallbox power has not increased by more than this value over the last X seconds, battery charging is allowed again. | `100` |
-| **Wallbox free power for enabling battery charging (optional)**| Minimum of free power (grid export) in watts, which must be available to check for a stabilization of the wallbox over the duration X. | `500`|
-| **Wallbox duration of free power for enabling battery charging (optional)**| Number of seconds of the free power (grid export) in seconds, to check for a stabilization of the wallbox. | `30`|
-| **Wallbox duration for enabling battery charging in seconds (optional)**| Number of seconds until batteries are released for charging again if the power fluctuation threshold is not exceeded. | `300` |
-| **Wallbox start time in seconds (optional)**| Number of seconds to wait before releasing the batteries again. This is used when a car is plugged in but does not start charging. This value is also relevant for phase switching of the wallbox. | `120` |
-| **Wallbox retry in minutes (optional)**| If a wallbox session ends and the cable remains plugged in, after this number of minutes and with sufficient surplus (> wallbox surplus parameter), the batteries are paused for the wallbox start time to allow charging. | `60` |
-| **Coordinator update interval**| Minimum number of seconds between executions of the logic update cycle (throttle). The logic is triggered by sensor updates (event-driven). | `3` |
-| **Service call cache time (seconds)** | Prevents sending the same Home Assistant service call (same entity + same value) too frequently. If set to a value > 0, identical calls are skipped for that many seconds. If set to `0`, identical calls are skipped indefinitely (until the requested value changes). | `30` |
-| **PID control enabled** | Enables PID-based power control (only active when **CT Mode** is `False`). When enabled, the integration continuously adjusts battery charge/discharge power to drive the *real grid power* towards `0W` (minimizing import/export). | `False` |
-| **PID Kp** | Proportional gain. Higher values react stronger to the current error (difference to the target of `0W`). Too high can cause oscillation. | `0.6` |
-| **PID Ki** | Integral gain. Eliminates long-term steady-state error by integrating error over time. Too high can cause slow oscillations (“windup”). | `0.02` |
-| **PID Kd** | Derivative gain. Reacts to how fast the error changes and can dampen oscillations. Too high can amplify noise from sensors. | `0.0` |
+| **Minimum consumption** | Minimum consumption in watts required to start discharging. | `200` |
+| **Max. limit breaches** | Max consecutive cycles below minimum limits before setting batteries to 0W. | `10` |
+| **Battery X: [Entity Type]** | Dropdown fields to select the specific AC Power, SOC, Charge, Discharge, Force Mode, and RS485 entities for each battery. | *(Selected via UI)* |
+| **Minimum state of charge (%)** | Batteries will no longer discharge once their SoC reaches this value. | `10` |
+| **Maximum state of charge (%)** | Batteries will no longer charge once their SoC reaches this value. | `100` |
+| **Max Discharge Power (W)** | Maximum discharge power sent to a single battery. | `2500` |
+| **Max Charge Power (W)** | Maximum charge power sent to a single battery. | `2500` |
+| **Power threshold: X to Y batteries** | Absolute power threshold (W) at which the system steps up to use more batteries. | `1500` |
+| **Power stage offset / hysteresis** | Offset used to switch power levels with less toggling (e.g., jump to 2 batteries at Threshold + Offset, drop to 1 at Threshold - Offset). | `300` |
+| **Priority interval** | Interval in minutes at which battery priorities are re-evaluated based on SoC. | `15` |
+| **Wallbox power sensor (optional)**| Sensor that measures wallbox charging power. | `sensor.wallbox_power` |
+| **Wallbox minimum surplus (W)**| If PV surplus exceeds this value, battery charging is paused for car charging. | `1500` |
+| **Wallbox cable connected (optional)**| A binary sensor (`on`/`off`) that indicates whether a charging cable is connected. | `binary_sensor.wallbox_cable` |
+| **Wallbox stability settings**| Various thresholds and delays to determine if the wallbox power is stable enough to allow home batteries to resume charging. | *(See UI for details)* |
+| **Coordinator update interval**| Minimum seconds between executions of the logic update cycle. | `3` |
+| **Service call cache TTL** | Seconds to cache identical service calls to prevent spamming the battery API. | `30` |
+| **PID control enabled** | Enables PID-based power control to continuously adjust battery power to drive the *real grid power* towards `0W`. | `False` |
 
 ---
 
@@ -128,32 +99,28 @@ After installation you can add the integration via the Home Assistant UI:
 
 You can configure up to 5 charge-level caps and 5 discharge-level caps to limit the maximum power commanded to each battery depending on its State of Charge (SoC). This helps protect battery lifetime by reducing charge/discharge currents near the top and bottom of the SoC range.
 
-Default example values (these are configurable in the integration options):
+Default example values (configurable via the integration options):
 
-- Charge caps (applied when charging, checked from highest SoC down):
-  - `charge_power_level_1` (SOC >= 98%): 1500 W
-  - `charge_power_level_2` (SOC >= 95%): 1800 W
-  - `charge_power_level_3` (SOC >= 91%): 2000 W
-  - `charge_power_level_4` (SOC >= 86%): 2200 W
-  - `charge_power_level_5` (SOC >= 80%): 2400 W
+- **Charge caps** (applied when charging, checked from highest SoC down):
+  - `Level 1` (SOC >= 98%): 1500 W
+  - `Level 2` (SOC >= 95%): 1800 W
+  - `Level 3` (SOC >= 91%): 2000 W
+  - `Level 4` (SOC >= 86%): 2200 W
+  - `Level 5` (SOC >= 80%): 2400 W
 
-- Discharge caps (applied when discharging, checked from lowest SoC up):
-  - `discharge_power_level_1` (SOC <= 13%): 1500 W
-  - `discharge_power_level_2` (SOC <= 15%): 1800 W
-  - `discharge_power_level_3` (SOC <= 19%): 2000 W
-  - `discharge_power_level_4` (SOC <= 25%): 2200 W
-  - `discharge_power_level_5` (SOC <= 30%): 2400 W
+- **Discharge caps** (applied when discharging, checked from lowest SoC up):
+  - `Level 1` (SOC <= 13%): 1500 W
+  - `Level 2` (SOC <= 15%): 1800 W
+  - `Level 3` (SOC <= 19%): 2000 W
+  - `Level 4` (SOC <= 25%): 2200 W
+  - `Level 5` (SOC <= 30%): 2400 W
 
-How these caps are used:
-
-- During distribution the coordinator computes a per-battery cap from the configured level values based on each battery's current SoC. The computed cap is also bounded by the global `Max Charge Power` / `Max Discharge Power` settings.
-- The requested power is then allocated among the selected batteries while respecting the per-battery caps (the allocation is performed iteratively so batteries hitting their cap are not over-supplied and remaining power flows to other batteries).
-- If a battery reaches its configured SoC limit (min/max), it will be excluded from the priority list and the priority will be recalculated immediately so another battery can take over.
-
+**How these caps are used:**
+During distribution, the coordinator computes a per-battery cap from these values based on each battery's current SoC. The requested power is allocated among the active batteries respecting these caps. If a battery reaches its absolute SoC limit, the priority list is immediately recalculated and the next available battery takes over.
 
 ## PID control (what it is and how the parameters work)
 
-PID control is a feedback control method. In this integration it is used to continuously adjust the battery charge/discharge power so that the measured *real grid power* approaches a target value of `0W`.
+PID control is a feedback control method. In this integration, it is used to continuously adjust the battery charge/discharge power so that the measured *real grid power* approaches a target value of `0W`.
 
 * When you have **PV surplus** (grid export), the controller will increase charging power.
 * When you have **grid import**, the controller will increase discharging power.
@@ -165,84 +132,31 @@ The three gains influence how the controller reacts:
 3. **D (Kd)** reacts to the rate of change of the error (damping).
 
 Practical tuning guidance:
-
 * Start with `Kd = 0`.
 * Increase `Kp` until the response is fast but not oscillating.
-* Add a small `Ki` to reduce residual import/export (steady-state error).
-* If you see oscillations, reduce `Kp` and/or `Ki`, or consider adding a small `Kd`.
-
-## Event-driven update loop and manual trigger service
-
-The coordinator update loop is **event-driven** (triggered by sensor updates). The configured **Coordinator update interval** acts as a **minimum interval / throttle**.
-
-Additionally, the integration registers a Home Assistant service to manually trigger an update cycle:
-
-* `marstek_venus_ha.trigger_update`
-
-Example automation:
-
-```yaml
-alias: Marstek - Trigger coordinator update
-mode: single
-trigger:
-  - platform: state
-    entity_id: sensor.power_meter_power
-action:
-  - service: marstek_venus_ha.trigger_update
-```
+* Add a small `Ki` to reduce residual import/export.
+* If you see oscillations, reduce `Kp` and/or `Ki`.
 
 ## How it works (in detail)
 
 ### Priority calculation
-
 * **When discharging (grid import)**: The battery with the **highest** SoC has the highest priority.
 * **When charging (grid export)**: The battery with the **lowest** SoC has the highest priority.
 * A battery is removed from the priority list when it reaches its upper/lower SoC limit.
 
-### Power control
+### Power Stage Control (Hysteresis)
+The absolute grid power determines the number of active batteries. Instead of constantly turning batteries on and off, the integration uses a dynamic offset (hysteresis) based on your configured `powerstage_X_to_Y` thresholds:
+1. **Step Up:** If the requested power is greater than `Threshold + Offset`, an additional battery is activated.
+2. **Step Down:** If the requested power is less than `Threshold - Offset`, a battery is deactivated.
 
-The absolute grid power (`abs(power)`) determines the number of active batteries:
-1.  **`Power <= level 1`**: Only the highest-priority battery is used.
-2.  **`level 1 < Power <= level 2`**: Power is distributed evenly across the two highest-priority batteries.
-3.  **`Power > level 2`**: Power is distributed evenly across all available batteries.
+### Wallbox logic (only active when wallbox parameters are configured)
+* **Discharge protection**: As soon as the wallbox draws power, discharging of **all** batteries is stopped immediately to prevent the home battery from draining into the car.
+* **Charging priority for the car**: If the real PV surplus exceeds the configured threshold, home battery charging is paused to prioritize the EV.
+* **Intelligent charge resume**: Battery charging is released again when the EV stops drawing fluctuating power (e.g., because the car is full or has hit its max charging speed). Discharging remains blocked as long as the wallbox is charging.
 
-### Wallbox logic (only active when all wallbox parameters are configured)
-
-* **Discharge protection**: As soon as the wallbox draws power (`Power > 10W`), discharging of **all** batteries is stopped immediately.
-* **Charging priority for the car**: If the **real PV surplus** (grid export + current battery charging power) exceeds the configured threshold, charging the home batteries is paused to prioritize the car.
-* **Intelligent charge resume**: Battery charging is released again when wallbox charging power stagnates for X seconds (e.g. because the car is full or has reached its maximum charging power). Discharging remains blocked as long as the wallbox is charging.
-
-### Switches
-
-The integration provides two switches to manually control the charging and discharging behavior:
-
-#### Charging Allowed
-- **Name**: `switch.*._charging_switch`
-- **Purpose**: Allows you to manually enable or disable charging of the batteries.
-- **Default state**: Enabled (on)
-- **Effect**: When disabled (off), the integration will not command any charging power to the batteries, regardless of available PV surplus.
-
-#### Discharging Allowed
-- **Name**: `switch.*._discharging_switch`
-- **Purpose**: Allows you to manually enable or disable discharging of the batteries.
-- **Default state**: Enabled (on)
-- **Effect**: When disabled (off), the integration will not command any discharging power from the batteries, even if there is grid import or high consumption.
-
-#### Wallbox Priority
-- **Name**: `switch.*._wallbox_priority_switch`
-- **Purpose**: Allows you to enable or disable the wallbox charging priority logic.
-- **Default state**: Enabled (on)
-- **Effect**: When enabled (on), the integration prioritizes EV charging over battery charging—pausing battery charging when PV surplus exceeds the configured threshold to supply energy to the car. When disabled (off), all wallbox integration is bypassed and batteries charge/discharge normally based on grid power.
-
-#### Block battery discharge while car charging
-- **Name**: `switch.*._discharge_blocker_cc_switch`
-- **Purpose**: Allows you to disable the discharging blocking feature while car charging.
-- **Default state**: Enabled (off)
-- **Effect**: When enabled (on), the integration doesn't allow any battery consumption while car charging (standardmode). If enabled you are allways charging your car from grid or pv. Only disable when you know what you are doing. Do not disable it if you want to charge from pv power only!
-
-
-**Use cases:**
-- Temporarily prevent charging during high export prices
-- Temporarily prevent discharging to save battery capacity for evening self-consumption
-- Stop battery operation during maintenance or troubleshooting
-- Allow car charging from batteries
+### Control Switches
+The integration provides dedicated switches in Home Assistant to manually override behaviors:
+* **Charging Allowed** (`switch.*._charging_switch`): Manually allow/block the batteries from charging.
+* **Discharging Allowed** (`switch.*._discharging_switch`): Manually allow/block the batteries from discharging into the house.
+* **Wallbox Priority** (`switch.*._wallbox_priority_switch`): Enable/disable the logic that prioritizes the EV over home batteries.
+* **Block battery discharge while car charging** (`switch.*._discharge_blocker_cc_switch`): Standard protection. If disabled, your home batteries are allowed to discharge into your EV.
