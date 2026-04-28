@@ -167,7 +167,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="batteries",
-            data_schema=data_schema,
+            data_schema=vol.Schema(schema_dict),
             errors=errors
         )
 
@@ -377,7 +377,7 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
 
         return self.async_show_form(
             step_id="batteries",
-            data_schema=data_schema,
+            data_schema=vol.Schema(schema_dict),
             errors=errors
         )
 
