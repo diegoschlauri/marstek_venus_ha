@@ -653,7 +653,7 @@ class MarstekCoordinator:
             if self._ct_mode:
                 _LOGGER.info("CT-Mode enabled. Disabling RS485 Modbus control mode (setting batteries to automatic).")
                 for batt in self._batteries:
-                    modbus_control_mode = switch.batt["rs485_mode"]
+                    modbus_control_mode = batt["rs485_mode"]
                     await self.hass.services.async_call("switch", "turn_off", {"entity_id": modbus_control_mode}, blocking=True)
             else:
                 _LOGGER.info("CT-Mode disabled. Batteries remain in manual/forcible mode.")
@@ -1740,16 +1740,13 @@ class MarstekCoordinator:
                 excluded_due_to_soc = False
                 eligible: list[dict[str, Any]] = []
                 for b in active_batteries:
-                    base_entity_id = b.get("id") if isinstance(b, dict) else None
-                    if not isinstance(base_entity_id, str) or not base_entity_id:
-                        continue
-                    soc = self._get_float_state(f"sensor.{base_entity_id}_battery_soc")
+                    soc = self._get_float_state(b["soc"])
                     if soc is None:
                         continue
                     if self._last_power_direction == PowerDir.CHARGE and soc >= max_soc:
                         _LOGGER.debug(
                             "Excluding battery %s from CHARGE: soc=%s >= max_soc=%s",
-                            base_entity_id,
+                            b["id"],
                             soc,
                             max_soc,
                         )
@@ -1758,7 +1755,7 @@ class MarstekCoordinator:
                     if self._last_power_direction == PowerDir.DISCHARGE and soc <= min_soc:
                         _LOGGER.debug(
                             "Excluding battery %s from DISCHARGE: soc=%s <= min_soc=%s",
-                            base_entity_id,
+                            b["id"],
                             soc,
                             min_soc,
                         )
@@ -1811,8 +1808,9 @@ class MarstekCoordinator:
         active_battery_ids = [b["id"] for b in active_batteries]
 
         per_batt_cap: dict[str, int] = {}
-        for b in active_battery_ids:
-            soc = self._get_float_state(f"sensor.{b}_battery_soc")
+        for b_id in active_battery_ids:
+            batt = next((b for b in self._batteries if b["id"] == b_id), None)
+            soc = self._get_float_state(batt["soc"]) if batt else None
             if soc is None:
                 # If SoC unknown, allow full configured max
                 cap = int(max_charge_power) if self._last_power_direction == PowerDir.CHARGE else int(max_discharge_power)
