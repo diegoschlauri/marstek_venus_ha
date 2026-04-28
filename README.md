@@ -30,8 +30,8 @@ This integration does not control the batteries directly via a vendor-specific A
 
 1. Read the **state of charge (SoC)** (e.g., `sensor.marstek_l1_battery_soc`).
 2. Read the **current AC power** (e.g., `sensor.marstek_l1_ac_power`). A positive value means discharging, a negative value means charging.
-3. Control the **charge power limit** (e.g., `number.marstek_l1_modbus_set_forcible_charge_power`).
-4. Control the **discharge power limit** (e.g., `number.marstek_l1_modbus_set_forcible_discharge_power`).
+3. Control the **charge power value** (e.g., `number.marstek_l1_modbus_set_forcible_charge_power`).
+4. Control the **discharge power value** (e.g., `number.marstek_l1_modbus_set_forcible_discharge_power`).
 5. Set the **Force Mode** to control current direction (e.g., `select.marstek_l1_modbus_force_mode`).
 6. Toggle the **RS485 Control Mode** (e.g., `switch.marstek_l1_modbus_rs485_control_mode`).
 
