@@ -185,6 +185,9 @@ class MarstekCoordinator:
         # Counters for minimum threshold gating in method _check_min_thresholds
         self._below_min_charge_count = 0
         self._below_min_discharge_count = 0
+        # Status for the Schmitt-Trigger-Hysterese
+        self._charge_suspended = False
+        self._discharge_suspended = False
 
         # Collect battery entities
         self._battery_count = int(self.config.get(CONF_BATTERY_COUNT, 1))
@@ -1536,8 +1539,7 @@ class MarstekCoordinator:
         def _cap_for_batt(batt_id: str) -> int:
             batt = next((b for b in self._batteries if b["id"] == batt_id), None)
             if not batt:
-                 return int(max_charge_power) if direction == PowerDir.CHARGE else int(max_discharge_power)
-                 
+                return int(max_charge_power) if direction == PowerDir.CHARGE else int(max_discharge_power)
             soc = self._get_float_state(batt["soc"])            
             if soc is None:
                 return int(max_charge_power) if direction == PowerDir.CHARGE else int(max_discharge_power)
@@ -1590,7 +1592,7 @@ class MarstekCoordinator:
         return curr_target
     
     async def _check_power_thresholds(self, real_power: float) -> bool:
-        """Check if power is below thresholds. Uses hysteresis to prevent resetting on single peaks."""
+        """Check if power is below thresholds using a Schmitt-Trigger logic to prevent toggling."""        
         abs_power = abs(real_power)
         
         # Declare powerdirection (at 0 it keeps the last direction)
@@ -1610,7 +1612,7 @@ class MarstekCoordinator:
 
         if direction == PowerDir.CHARGE:
             self._below_min_discharge_count = 0  # Reset counter for the other direction
-            
+            self._discharge_suspended = False    # Reset suspension state for the other direction
             if abs_power < min_surplus:
                 self._below_min_charge_count += 1
             else:
@@ -1620,11 +1622,18 @@ class MarstekCoordinator:
             # Declare Max Counts times 2 to not increase to high
             self._below_min_charge_count = min(self._below_min_charge_count, 2*(max_cycles))
                 
+            # --- SCHMITT-TRIGGER (Zustands-Hysterese) ---
+            if self._below_min_charge_count >= max_cycles:
+                self._charge_suspended = True    # stop charging
+            elif self._below_min_charge_count == 0:
+                self._charge_suspended = False   # charging allowed again
+                
             count = self._below_min_charge_count
+            is_suspended = self._charge_suspended
             
         else: # DISCHARGE
             self._below_min_charge_count = 0  # Reset counter for the other direction
-            
+            self._charge_suspended = False    # Reset suspension state for the other direction
             if abs_power < min_cons:
                 self._below_min_discharge_count += 1
             else:
@@ -1634,12 +1643,19 @@ class MarstekCoordinator:
             # Declare Max Counts times 2 to not increase to high
             self._below_min_discharge_count = min(self._below_min_discharge_count, 2*(max_cycles))
             
+            # --- SCHMITT-TRIGGER (Zustands-Hysterese) ---
+            if self._below_min_discharge_count >= max_cycles:
+                self._discharge_suspended = True   # stop discharging
+            elif self._below_min_discharge_count == 0:
+                self._discharge_suspended = False  # discharging allowed again
+
             count = self._below_min_discharge_count
+            is_suspended = self._discharge_suspended
 
         _LOGGER.debug(f"Threshold check: direction={direction.name}, power={abs_power:.0f}W, counter={count}/{max_cycles}")
 
-        # Wenn der Zähler das Maximum erreicht hat, geben wir True zurück (Abschalten!)
-        return count >= max_cycles
+        # Return whether the current direction is suspended due to being below thresholds for too long
+        return is_suspended
 
     async def _distribute_power(self, power: float, target_num_batteries: int = 1, *, from_pid: bool = False):
         """Control battery charge/discharge based on power stages."""
