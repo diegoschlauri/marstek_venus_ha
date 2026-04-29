@@ -1616,8 +1616,9 @@ class MarstekCoordinator:
             else:
                 # HYSTERESE: Slowly decrease the counter instead of resetting immediately to 0
                 self._below_min_charge_count = max(0, self._below_min_charge_count - 1)
-                # Declare Max Counts times 2 to not increase to high
-                self._below_min_charge_count = min(self._below_min_charge_count, 2*(max_cycles))
+            
+            # Declare Max Counts times 2 to not increase to high
+            self._below_min_charge_count = min(self._below_min_charge_count, 2*(max_cycles))
                 
             count = self._below_min_charge_count
             
@@ -1629,8 +1630,10 @@ class MarstekCoordinator:
             else:
                 # HYSTERESE: Slowly decrease the counter instead of resetting immediately to 0
                 self._below_min_discharge_count = max(0, self._below_min_discharge_count - 1)
-                # Declare Max Counts times 2 to not increase to high
-                self._below_min_discharge_count = min(self._below_min_discharge_count, 2*(max_cycles))
+            
+            # Declare Max Counts times 2 to not increase to high
+            self._below_min_discharge_count = min(self._below_min_discharge_count, 2*(max_cycles))
+            
             count = self._below_min_discharge_count
 
         _LOGGER.debug(f"Threshold check: direction={direction.name}, power={abs_power:.0f}W, counter={count}/{max_cycles}")
