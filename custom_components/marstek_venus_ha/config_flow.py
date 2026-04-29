@@ -128,6 +128,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._data.update(user_input)
             return await self.async_step_wallbox()
         
+        schema_dict = {}
         # Generate selects for selected number of batteries
         for i in range(1, battery_count + 1):
             schema_dict[vol.Required(f"battery_{i}_ac_power_entity")] = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
@@ -143,7 +144,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             for i in range(1, battery_count):
                 # Wir setzen einen sinnvollen Default-Wert (z.B. 1500W, 3000W, etc.)
                 default_stage = i * 1500
-                schema_dict[vol.Required(f"powerstage_{i}_to_{i+1}")] = int
+                schema_dict[vol.Required(f"powerstage_{i}_to_{i+1}", default=default_stage)] = int
 
 
         schema_dict[vol.Required(CONF_MIN_SOC, default=DEFAULT_MIN_SOC)] = int

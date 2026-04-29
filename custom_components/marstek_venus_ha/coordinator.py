@@ -182,7 +182,7 @@ class MarstekCoordinator:
         self._ct_mode = self.config.get(CONF_CT_MODE, False)
         self._wallbox_is_active = False  # Track if wallbox currently controls
 
-        # Counters for minimum threshold gating in _distribute_power
+        # Counters for minimum threshold gating in method _check_min_thresholds
         self._below_min_charge_count = 0
         self._below_min_discharge_count = 0
 
@@ -660,7 +660,7 @@ class MarstekCoordinator:
             wait_tasks = []
             for batt in self._batteries:
                 if batt.get("ac_power"):
-                    wait_tasks.append(self.wait_for_entity_available(batt["ac_power"], timeout=30.0))
+                    wait_tasks.append(self.wait_for_entity_available(batt["ac_power"], timeout=30))
             
             if wait_tasks:
                 await asyncio.gather(*wait_tasks)
@@ -794,6 +794,20 @@ class MarstekCoordinator:
             self._pid_prev_error = None
             self._pid_prev_ts = None
             return
+        
+        # check if power is below thresholds for too long and if so, set all batteries to 0W and suspend PID if active
+        is_below_threshold = await self._check_power_thresholds(real_power)
+        if is_below_threshold:
+            _LOGGER.debug("Power below threshold for too many cycles. Forcing all batteries to 0W.")
+            await self._set_all_batteries_to_zero()
+            
+            # Reset PID state and suspend if enabled, to prevent integral windup and unnecessary switching when we are at 0W for an extended period.
+            if self._pid_enabled:
+                self._pid_suspended = True
+                self._pid_suspend_direction = PowerDir.CHARGE if real_power < 0 else PowerDir.DISCHARGE
+                self._reset_pid_state()
+                
+            return # Stop further processing until power goes above the threshold again for declared number of cycles.
 
         if not self._ct_mode and self._pid_enabled:
             if self._pid_suspended:
@@ -1574,6 +1588,55 @@ class MarstekCoordinator:
         curr_target = min(curr_target, len(available_ids))
         _LOGGER.debug(f"Adjusted target batteries considering per-battery caps: {curr_target}")
         return curr_target
+    
+    async def _check_power_thresholds(self, real_power: float) -> bool:
+        """Check if power is below thresholds. Uses hysteresis to prevent resetting on single peaks."""
+        abs_power = abs(real_power)
+        
+        # Declare powerdirection (at 0 it keeps the last direction)
+        if real_power > 0:
+            direction = PowerDir.DISCHARGE
+        elif real_power < 0:
+            direction = PowerDir.CHARGE
+        else:
+            direction = self._last_power_direction
+            
+        try:
+            min_surplus = float(self.config.get(CONF_MIN_SURPLUS, 50))
+            min_cons = float(self.config.get(CONF_MIN_CONSUMPTION, 50))
+            max_cycles = int(self.config.get(CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING, 10))
+        except (ValueError, TypeError):
+            min_surplus, min_cons, max_cycles = 50.0, 50.0, 10
+
+        if direction == PowerDir.CHARGE:
+            self._below_min_discharge_count = 0  # Reset counter for the other direction
+            
+            if abs_power < min_surplus:
+                self._below_min_charge_count += 1
+            else:
+                # HYSTERESE: Slowly decrease the counter instead of resetting immediately to 0
+                self._below_min_charge_count = max(0, self._below_min_charge_count - 1)
+                # Declare Max Counts times 2 to not increase to high
+                self._below_min_charge_count = min(self._below_min_charge_count, 2*(max_cycles))
+                
+            count = self._below_min_charge_count
+            
+        else: # DISCHARGE
+            self._below_min_charge_count = 0  # Reset counter for the other direction
+            
+            if abs_power < min_cons:
+                self._below_min_discharge_count += 1
+            else:
+                # HYSTERESE: Slowly decrease the counter instead of resetting immediately to 0
+                self._below_min_discharge_count = max(0, self._below_min_discharge_count - 1)
+                # Declare Max Counts times 2 to not increase to high
+                self._below_min_discharge_count = min(self._below_min_discharge_count, 2*(max_cycles))
+            count = self._below_min_discharge_count
+
+        _LOGGER.debug(f"Threshold check: direction={direction.name}, power={abs_power:.0f}W, counter={count}/{max_cycles}")
+
+        # Wenn der Zähler das Maximum erreicht hat, geben wir True zurück (Abschalten!)
+        return count >= max_cycles
 
     async def _distribute_power(self, power: float, target_num_batteries: int = 1, *, from_pid: bool = False):
         """Control battery charge/discharge based on power stages."""
@@ -1651,66 +1714,6 @@ class MarstekCoordinator:
                 round(requested_abs_power, 0),
                 round(abs_power, 0),
             )
-
-        min_surplus_for_charging = self.config.get(CONF_MIN_SURPLUS, 50)
-        min_consumption_for_discharging = self.config.get(CONF_MIN_CONSUMPTION, 50)
-
-        # Check minimum thresholds to activate charging/discharging
-        if self._last_power_direction == PowerDir.CHARGE and abs_power < min_surplus_for_charging:
-            self._below_min_charge_count += 1
-            self._below_min_discharge_count = 0
-            _LOGGER.debug(
-                "Charging power (%sW) below minimum surplus threshold (%sW). below_min_charge_count=%s/%s",
-                round(abs_power, 0),
-                min_surplus_for_charging,
-                self._below_min_charge_count,
-                self._below_min_cycles_to_zero,
-            )
-            if self._below_min_charge_count >= self._below_min_cycles_to_zero:
-                _LOGGER.debug(
-                    "Charging power below minimum threshold for %s consecutive cycles. Setting all batteries to 0W.",
-                    self._below_min_cycles_to_zero,
-                )
-                self._below_min_charge_count = 0
-                await self._set_all_batteries_to_zero()
-
-                if from_pid:
-                    self._pid_suspended = True
-                    self._pid_suspend_direction = PowerDir.CHARGE
-                    self._reset_pid_state()
-                return
-        
-        if self._last_power_direction == PowerDir.DISCHARGE and abs_power < min_consumption_for_discharging:
-            self._below_min_discharge_count += 1
-            self._below_min_charge_count = 0
-            _LOGGER.debug(
-                "Discharging power (%sW) below minimum consumption threshold (%sW). below_min_discharge_count=%s/%s",
-                round(abs_power, 0),
-                min_consumption_for_discharging,
-                self._below_min_discharge_count,
-                self._below_min_cycles_to_zero,
-            )
-            if self._below_min_discharge_count >= self._below_min_cycles_to_zero:
-                _LOGGER.debug(
-                    "Discharging power below minimum threshold for %s consecutive cycles. Setting all batteries to 0W.",
-                    self._below_min_cycles_to_zero,
-                )
-                self._below_min_discharge_count = 0
-                await self._set_all_batteries_to_zero()
-
-                if from_pid:
-                    self._pid_suspended = True
-                    self._pid_suspend_direction = PowerDir.DISCHARGE
-                    self._reset_pid_state()
-                return
-
-        # Reset counters when above minimum thresholds
-        if (
-            (self._last_power_direction == PowerDir.CHARGE and abs_power >= min_surplus_for_charging)
-            or (self._last_power_direction == PowerDir.DISCHARGE and abs_power >= min_consumption_for_discharging)
-        ):
-            self._below_min_charge_count = 0
-            self._below_min_discharge_count = 0
 
         # If no batteries should be active, ensure everything is set to 0 and exit.
         if target_num_batteries == 0:
