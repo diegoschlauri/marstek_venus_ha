@@ -19,22 +19,16 @@ from .const import (
     DOMAIN,
     SIGNAL_DIAGNOSTICS_UPDATED,
     CONF_CT_MODE,
+    CONF_BATTERY_COUNT,
     CONF_GRID_POWER_SENSOR,
     CONF_SMOOTHING_SECONDS,
     CONF_MIN_SURPLUS,
     CONF_MIN_CONSUMPTION,
     CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING,
-    CONF_BATTERY_1_ENTITY,
-    CONF_BATTERY_2_ENTITY,
-    CONF_BATTERY_3_ENTITY,
     CONF_MIN_SOC,
     CONF_MAX_SOC,
     CONF_MAX_DISCHARGE_POWER,
     CONF_MAX_CHARGE_POWER,
-    CONF_POWER_STAGE_DISCHARGE_1,
-    CONF_POWER_STAGE_DISCHARGE_2,
-    CONF_POWER_STAGE_CHARGE_1,
-    CONF_POWER_STAGE_CHARGE_2,
     CONF_POWER_STAGE_OFFSET,
     CONF_PRIORITY_INTERVAL,
     CONF_WALLBOX_POWER_SENSOR,
@@ -188,18 +182,32 @@ class MarstekCoordinator:
         self._ct_mode = self.config.get(CONF_CT_MODE, False)
         self._wallbox_is_active = False  # Track if wallbox currently controls
 
-        # Counters for minimum threshold gating in _distribute_power
+        # Counters for minimum threshold gating in method _check_min_thresholds
         self._below_min_charge_count = 0
         self._below_min_discharge_count = 0
+        # Status for the Schmitt-Trigger-Hysterese
+        self._charge_suspended = False
+        self._discharge_suspended = False
 
         # Collect battery entities
-        self._battery_entities = [
-            b for b in [
-                self.config.get(CONF_BATTERY_1_ENTITY),
-                self.config.get(CONF_BATTERY_2_ENTITY),
-                self.config.get(CONF_BATTERY_3_ENTITY),
-            ] if b
-        ]
+        self._battery_count = int(self.config.get(CONF_BATTERY_COUNT, 1))
+        self._batteries = []
+
+        for i in range(1, self._battery_count + 1):
+            # Hole die vom Nutzer ausgewählte Entität
+            ac_power_ent = self.config.get(f"battery_{i}_ac_power_entity")
+            
+            # Wenn sie existiert, füge das komplette Batterie-Set hinzu
+            if ac_power_ent:
+                self._batteries.append({
+                    "id": f"battery_{i}",  # Eine interne ID, nur fürs Logging und die Prio-Liste
+                    "ac_power": ac_power_ent,
+                    "soc": self.config.get(f"battery_{i}_soc_entity"),
+                    "charge_power": self.config.get(f"battery_{i}_charge_power_entity"),
+                    "discharge_power": self.config.get(f"battery_{i}_discharge_power_entity"),
+                    "force_mode": self.config.get(f"battery_{i}_force_mode_entity"),
+                    "rs485_mode": self.config.get(f"battery_{i}_rs485_mode_entity"),
+                })
     
     async def async_load_settings(self) -> None:
         """Fetch settings from the Store helper."""
@@ -608,92 +616,93 @@ class MarstekCoordinator:
 
         self._pid_suspended = False
         self._pid_suspend_direction = PowerDir.NEUTRAL
-
-        # Wait concurrently for configured entities (avoids additive timeouts)
-        wait_entities = []
+        
+        # 1. Initialize caches and deques
+        self._service_call_cache.clear()
+        _LOGGER.debug(f"Running version {self._manifest_version}")
+        self._below_min_charge_count = 0
+        self._below_min_discharge_count = 0
+        self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
+        self._wallbox_power_history = deque(maxlen=self._get_deque_size("wallbox"))
+        self._last_wallbox_pause_attempt = datetime.min
+        
+        # 2. Register state-change listeners (to ensure we don't miss sensor updates)
+        trigger_entities: list[str] = []
         grid_power_sensor = self.config.get(CONF_GRID_POWER_SENSOR)
         if grid_power_sensor:
-            wait_entities.append(grid_power_sensor)
+            trigger_entities.append(grid_power_sensor)
+        pv_power_sensor = self.config.get(CONF_PV_POWER_SENSOR)
+        if pv_power_sensor:
+            trigger_entities.append(pv_power_sensor)
+        wb_cable_sensor = self.config.get(CONF_WALLBOX_CABLE_SENSOR)
+        if wb_cable_sensor:
+            trigger_entities.append(wb_cable_sensor)
 
-        for key in (CONF_BATTERY_1_ENTITY, CONF_BATTERY_2_ENTITY, CONF_BATTERY_3_ENTITY):
-            ent = self.config.get(key)
-            if ent:
-                wait_entities.append(ent)
+        @callback
+        def _on_state_change(event):
+            entity_id = event.data.get("entity_id")
+            def _schedule_update() -> None:
+                self.hass.async_create_task(
+                    self.async_request_update(reason=f"state_change:{entity_id}")
+                )
+            self.hass.loop.call_soon_threadsafe(_schedule_update)
 
-        wallbox_cable_sensor = self.config.get(CONF_WALLBOX_CABLE_SENSOR)
-        if wallbox_cable_sensor:
-            wait_entities.append(wallbox_cable_sensor)
+        if trigger_entities:
+            remove = async_track_state_change_event(self.hass, trigger_entities, _on_state_change)
+            self._unsub_listeners.append(remove)
 
-        if wait_entities:
-            # run all waits in parallel; total wait <= max individual timeout (default 60s)
-            await asyncio.gather(*(self.wait_for_entity_available(e) for e in wait_entities))
+        self._is_running = True
+        
+        # 3. Temporarily block the logic for a clean startup
+        self._ready_to_command = False
 
+        async def _delayed_startup_routine():
+            _LOGGER.info("Waiting for Modbus entities to become available...")
             
-        if not self._is_running:
-            self._service_call_cache.clear()
-            _LOGGER.debug(f"Running version {self._manifest_version}")
-            _LOGGER.debug("Service call cache cleared on coordinator start")
-            self._below_min_charge_count = 0
-            self._below_min_discharge_count = 0
-            # Re-initialize deques on start
-            self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
-            self._wallbox_power_history = deque(maxlen=self._get_deque_size("wallbox"))
-            self._last_wallbox_pause_attempt = datetime.min # Reset cooldown on start
-            #Reset Batteries to 0 on Start-Up in background to avoid blocking startup
-            self.hass.async_create_task(self._set_all_batteries_to_zero())            
-            coordinator_update_interval = self.config.get(CONF_COORDINATOR_UPDATE_INTERVAL_SECONDS)
-            # CT-Mode: Disable RS485 control mode (use automatic mode)
+            # Wait for the ac_power sensors of all configured batteries
+            wait_tasks = []
+            for batt in self._batteries:
+                if batt.get("ac_power"):
+                    wait_tasks.append(self.wait_for_entity_available(batt["ac_power"], timeout=30))
+            
+            if wait_tasks:
+                await asyncio.gather(*wait_tasks)
+                
+            # Tiny buffer to ensure switches/selects are also ready after the sensor becomes available
+            await asyncio.sleep(2)
+            
+            _LOGGER.info("Modbus entities are ready. Starting Marstek Venus control logic.")
+            
+            # We are now ready to send commands!
+            self._ready_to_command = True
+            
+            # Initially set all batteries to 0W
+            await self._set_all_batteries_to_zero()
+            
+            # CT-Mode Check
             if self._ct_mode:
-                _LOGGER.info("CT-Mode enabled. Disabling RS485 Modbus control mode (setting batteries to automatic).")
-                for battery_base_id in self._battery_entities:
-                    modbus_control_mode = f"switch.{battery_base_id}_modbus_rs485_control_mode"
-                    await self.hass.services.async_call("switch", "turn_off", {"entity_id": modbus_control_mode}, blocking=True)
+                _LOGGER.info("CT-Mode enabled. Disabling RS485 Modbus control mode.")
+                for batt in self._batteries:
+                    modbus_control_mode = batt.get("rs485_mode")
+                    if modbus_control_mode:
+                        try:
+                            await self.hass.services.async_call("switch", "turn_off", {"entity_id": modbus_control_mode}, blocking=True)
+                        except Exception as e:
+                            _LOGGER.debug(f"Could not disable RS485 mode for {batt['id']}: {e}")
             else:
                 _LOGGER.info("CT-Mode disabled. Batteries remain in manual/forcible mode.")
+                
+            # Request initial update
+            await self.async_request_update(reason="startup")
 
-            coordinator_update_interval = self._get_effective_update_interval()
-            _LOGGER.info(
-                "Starting coordinator in event-driven mode on sensor updates (min interval: %ss)",
-                coordinator_update_interval,
-            )
+        # Start the intelligent startup routine in the background
+        self.hass.async_create_task(_delayed_startup_routine())
 
-            # Subscribe to relevant sensor updates (grid power, PV power, wallbox cable).
-            trigger_entities: list[str] = []
-
-            grid_power_sensor = self.config.get(CONF_GRID_POWER_SENSOR)
-            if grid_power_sensor:
-                trigger_entities.append(grid_power_sensor)
-
-            pv_power_sensor = self.config.get(CONF_PV_POWER_SENSOR)
-            if pv_power_sensor:
-                trigger_entities.append(pv_power_sensor)
-
-            wb_cable_sensor = self.config.get(CONF_WALLBOX_CABLE_SENSOR)
-            if wb_cable_sensor:
-                trigger_entities.append(wb_cable_sensor)
-
-            @callback
-            def _on_state_change(event):
-                entity_id = event.data.get("entity_id")
-
-                def _schedule_update() -> None:
-                    self.hass.async_create_task(
-                        self.async_request_update(reason=f"state_change:{entity_id}")
-                    )
-
-                # Home Assistant may execute state-change callbacks from a non-event-loop thread.
-                # Always schedule the task in a thread-safe way.
-                self.hass.loop.call_soon_threadsafe(_schedule_update)
-
-            if trigger_entities:
-                remove = async_track_state_change_event(self.hass, trigger_entities, _on_state_change)
-                self._unsub_listeners.append(remove)
-
-            # Run one initial update after startup.
-            self.hass.async_create_task(self.async_request_update(reason="startup"))
-
-            self._is_running = True
-            _LOGGER.info("Marstek Venus HA Integration coordinator started (id=%s).", self._instance_id)
+        coordinator_update_interval = self._get_effective_update_interval()
+        _LOGGER.info(
+            "Marstek Venus HA Integration coordinator started (id=%s, min interval: %ss).", 
+            self._instance_id, coordinator_update_interval
+        )
 
     async def async_request_update(self, *, reason: str = "manual") -> None:
         """Request a coordinator update.
@@ -701,7 +710,8 @@ class MarstekCoordinator:
         This is safe to call from automations/services or state-change listeners.
         It enforces a minimum interval between updates and prevents concurrent runs.
         """
-        if not self._is_running:
+        # Blocking updates, while startup or startdelay
+        if not self._is_running or not getattr(self, "_ready_to_command", True):
             return
 
         min_interval = float(self._get_effective_update_interval())
@@ -787,6 +797,20 @@ class MarstekCoordinator:
             self._pid_prev_error = None
             self._pid_prev_ts = None
             return
+        
+        # check if power is below thresholds for too long and if so, set all batteries to 0W and suspend PID if active
+        is_below_threshold = await self._check_power_thresholds(real_power)
+        if is_below_threshold:
+            _LOGGER.debug("Power below threshold for too many cycles. Forcing all batteries to 0W.")
+            await self._set_all_batteries_to_zero()
+            
+            # Reset PID state and suspend if enabled, to prevent integral windup and unnecessary switching when we are at 0W for an extended period.
+            if self._pid_enabled:
+                self._pid_suspended = True
+                self._pid_suspend_direction = PowerDir.CHARGE if real_power < 0 else PowerDir.DISCHARGE
+                self._reset_pid_state()
+                
+            return # Stop further processing until power goes above the threshold again for declared number of cycles.
 
         if not self._ct_mode and self._pid_enabled:
             if self._pid_suspended:
@@ -1059,7 +1083,7 @@ class MarstekCoordinator:
 
         # Get the current power of all batteries
         battery_powers: dict[str, float | None] = {
-            b: self._get_float_state(f"sensor.{b}_ac_power") for b in self._battery_entities
+            batt["id"]: self._get_float_state(batt["ac_power"]) for batt in self._batteries
         }
         total_battery_power = sum(p for p in battery_powers.values() if p is not None)
         
@@ -1403,19 +1427,22 @@ class MarstekCoordinator:
         
         available_batteries = []
         missing_soc: list[str] = []
-        for base_entity_id in self._battery_entities:
-            soc = self._get_float_state(f"sensor.{base_entity_id}_battery_soc")
+        for batt in self._batteries:
+            soc = self._get_float_state(batt["soc"])
             if soc is None:
-                missing_soc.append(base_entity_id)
+                missing_soc.append(batt["id"])
                 continue
 
+            batt_copy = dict(batt)
+            batt_copy["current_soc"] = soc
+
             if power_direction == PowerDir.CHARGE and soc <= max_soc:
-                available_batteries.append({"id": base_entity_id, "soc": soc})
+                available_batteries.append(batt_copy)
             elif power_direction == PowerDir.DISCHARGE and soc >= min_soc:
-                available_batteries.append({"id": base_entity_id, "soc": soc})
+                available_batteries.append(batt_copy)
 
         is_reverse = (power_direction == PowerDir.DISCHARGE)
-        self._battery_priority = sorted(available_batteries, key=lambda x: x['soc'], reverse=is_reverse)
+        self._battery_priority = sorted(available_batteries, key=lambda x: x['current_soc'], reverse=is_reverse)
         _LOGGER.debug(f"New battery priority: {self._battery_priority}")
         if missing_soc:
             _LOGGER.debug("Battery SoC unavailable for priority calculation: %s", missing_soc)
@@ -1423,13 +1450,6 @@ class MarstekCoordinator:
     def _get_desired_number_of_batteries(self, power: float) -> int:
         # Get the current allow_charging and allow_discharging states
         abs_power = abs(power)
-        stage_offset = self.config.get(CONF_POWER_STAGE_OFFSET, 50)
-        if self._last_power_direction == PowerDir.DISCHARGE: #Currently Discharging
-            stage1 = self.config.get(CONF_POWER_STAGE_DISCHARGE_1)
-            stage2 = self.config.get(CONF_POWER_STAGE_DISCHARGE_2)
-        else:
-            stage1 = self.config.get(CONF_POWER_STAGE_CHARGE_1)
-            stage2 = self.config.get(CONF_POWER_STAGE_CHARGE_2)
         
         num_available = len(self._battery_priority)
         if num_available == 0:
@@ -1438,57 +1458,44 @@ class MarstekCoordinator:
         
         # 1. Ermittle die Anzahl der Batterien, die aktuell Leistung liefern/aufnehmen
         num_currently_active = 0
-        for b_id in self._battery_entities:
-            power_state = self._get_float_state(f"sensor.{b_id}_ac_power")
-            # Zähle Batterien mit mehr als 10W (Toleranz für Rauschen)
+        for batt in self._batteries:
+            power_state = self._get_float_state(batt["ac_power"])
             if power_state is not None and abs(power_state) > 10:
                 num_currently_active += 1
 
         _LOGGER.debug(f"Hysteresis check: num_available={num_available}, num_currently_active={num_currently_active}, abs_power={abs_power:.0f}W")
+
+        # Startwert ist die aktuell aktive Anzahl (mindestens 1)
+        target_num_batteries = max(1, num_currently_active)
+        stage_offset = self.config.get(CONF_POWER_STAGE_OFFSET, 500)
         
-        # 2. Implementiere Hysterese-Logik basierend auf dem aktuellen Zustand
-        target_num_batteries = 0
+        # 2. Hysterese-Logik dynamisch anwenden
 
-        if num_currently_active <= 1:
-            # Aktuell 0 oder 1 Batterie aktiv. Logik zum HOCHschalten:
+        # HOCHSCHALTEN: Prüfen, ob wir mehr Batterien brauchen
+        while target_num_batteries < num_available:
+            # Hole den dynamischen Schwellenwert (Fallback: i * 1500)
+            threshold = self.config.get(f"powerstage_{target_num_batteries}_to_{target_num_batteries+1}")
+            if threshold is None:
+                threshold = target_num_batteries * 1500
+            
             # Schwelle = STUFE + OFFSET
-            if abs_power > (stage2 + stage_offset):
-                target_num_batteries = 3
-            elif abs_power > (stage1 + stage_offset):
-                target_num_batteries = 2
+            if abs_power > (threshold + stage_offset):
+                target_num_batteries += 1
             else:
-                # Leistung ist unter (stage1 + offset)
-                target_num_batteries = 1
+                break # Wenn die Leistung nicht reicht, brechen wir das Hochschalten ab
 
-        elif num_currently_active == 2:
-            # Aktuell 2 Batterien aktiv. Logik zum HOCH- oder RUNTERschalten:
-            if abs_power > (stage2 + stage_offset):  # HOCHschalten
-                target_num_batteries = 3
-            elif abs_power < (stage1 - stage_offset):  # RUNTERschalten
-                target_num_batteries = 1
-            else:
-                # Bleibe im Hysterese-Bereich: (stage1 - offset) <= power <= (stage2 + offset)
-                target_num_batteries = 2
-
-        else:  # num_currently_active >= 3
-            # Aktuell 3 Batterien aktiv. Logik zum RUNTERschalten:
+        # RUNTERSCHALTEN: Prüfen, ob wir weniger Batterien brauchen
+        while target_num_batteries > 1:
+            # Hole den Schwellenwert der darunterliegenden Stufe
+            threshold = self.config.get(f"powerstage_{target_num_batteries-1}_to_{target_num_batteries}")
+            if threshold is None:
+                threshold = (target_num_batteries - 1) * 1500
+                
             # Schwelle = STUFE - OFFSET
-            if abs_power < (stage1 - stage_offset):
-                target_num_batteries = 1
-            elif abs_power < (stage2 - stage_offset):
-                target_num_batteries = 2
+            if abs_power < (threshold - stage_offset):
+                target_num_batteries -= 1
             else:
-                # Bleibe im Hysterese-Bereich: power >= (stage2 - offset)
-                target_num_batteries = 3
-
-        # Berücksichtige die maximal verfügbaren Batterien (aus der Prioritätenliste)
-        if num_available == 1:
-            target_num_batteries = 1
-        elif num_available == 2:
-            target_num_batteries = min(target_num_batteries, 2)
-        else:
-            # Dies deckt num_available == 3 oder mehr ab
-            target_num_batteries = min(target_num_batteries, 3)
+                break # Wenn die Leistung noch zu hoch ist, bleiben wir auf dieser Stufe
 
         _LOGGER.debug(f"Determined target number of batteries: {target_num_batteries} (Available: {num_available}, Currently Active: {num_currently_active})")
         # Consider per-battery SoC-based caps: if the selected number of
@@ -1529,8 +1536,11 @@ class MarstekCoordinator:
                 pass
 
         # Helper to compute cap for a battery based on its SoC and direction
-        def _cap_for_batt(base_entity_id: str) -> int:
-            soc = self._get_float_state(f"sensor.{base_entity_id}_battery_soc")
+        def _cap_for_batt(batt_id: str) -> int:
+            batt = next((b for b in self._batteries if b["id"] == batt_id), None)
+            if not batt:
+                return int(max_charge_power) if direction == PowerDir.CHARGE else int(max_discharge_power)
+            soc = self._get_float_state(batt["soc"])            
             if soc is None:
                 return int(max_charge_power) if direction == PowerDir.CHARGE else int(max_discharge_power)
             if direction == PowerDir.CHARGE:
@@ -1580,6 +1590,72 @@ class MarstekCoordinator:
         curr_target = min(curr_target, len(available_ids))
         _LOGGER.debug(f"Adjusted target batteries considering per-battery caps: {curr_target}")
         return curr_target
+    
+    async def _check_power_thresholds(self, real_power: float) -> bool:
+        """Check if power is below thresholds using a Schmitt-Trigger logic to prevent toggling."""        
+        abs_power = abs(real_power)
+        
+        # Declare powerdirection (at 0 it keeps the last direction)
+        if real_power > 0:
+            direction = PowerDir.DISCHARGE
+        elif real_power < 0:
+            direction = PowerDir.CHARGE
+        else:
+            direction = self._last_power_direction
+            
+        try:
+            min_surplus = float(self.config.get(CONF_MIN_SURPLUS, 50))
+            min_cons = float(self.config.get(CONF_MIN_CONSUMPTION, 50))
+            max_cycles = int(self.config.get(CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING, 10))
+        except (ValueError, TypeError):
+            min_surplus, min_cons, max_cycles = 50.0, 50.0, 10
+
+        if direction == PowerDir.CHARGE:
+            self._below_min_discharge_count = 0  # Reset counter for the other direction
+            self._discharge_suspended = False    # Reset suspension state for the other direction
+            if abs_power < min_surplus:
+                self._below_min_charge_count += 1
+            else:
+                # HYSTERESE: Slowly decrease the counter instead of resetting immediately to 0
+                self._below_min_charge_count = max(0, self._below_min_charge_count - 1)
+            
+            # Declare Max Counts times 2 to not increase to high
+            self._below_min_charge_count = min(self._below_min_charge_count, 2*(max_cycles))
+                
+            # --- SCHMITT-TRIGGER (Zustands-Hysterese) ---
+            if self._below_min_charge_count >= max_cycles:
+                self._charge_suspended = True    # stop charging
+            elif self._below_min_charge_count == 0:
+                self._charge_suspended = False   # charging allowed again
+                
+            count = self._below_min_charge_count
+            is_suspended = self._charge_suspended
+            
+        else: # DISCHARGE
+            self._below_min_charge_count = 0  # Reset counter for the other direction
+            self._charge_suspended = False    # Reset suspension state for the other direction
+            if abs_power < min_cons:
+                self._below_min_discharge_count += 1
+            else:
+                # HYSTERESE: Slowly decrease the counter instead of resetting immediately to 0
+                self._below_min_discharge_count = max(0, self._below_min_discharge_count - 1)
+            
+            # Declare Max Counts times 2 to not increase to high
+            self._below_min_discharge_count = min(self._below_min_discharge_count, 2*(max_cycles))
+            
+            # --- SCHMITT-TRIGGER (Zustands-Hysterese) ---
+            if self._below_min_discharge_count >= max_cycles:
+                self._discharge_suspended = True   # stop discharging
+            elif self._below_min_discharge_count == 0:
+                self._discharge_suspended = False  # discharging allowed again
+
+            count = self._below_min_discharge_count
+            is_suspended = self._discharge_suspended
+
+        _LOGGER.debug(f"Threshold check: direction={direction.name}, power={abs_power:.0f}W, counter={count}/{max_cycles}")
+
+        # Return whether the current direction is suspended due to being below thresholds for too long
+        return is_suspended
 
     async def _distribute_power(self, power: float, target_num_batteries: int = 1, *, from_pid: bool = False):
         """Control battery charge/discharge based on power stages."""
@@ -1592,7 +1668,7 @@ class MarstekCoordinator:
 
         if target_num_batteries < 0:
             target_num_batteries = 0
-        max_batt = len(self._battery_entities)
+        max_batt = len(self._batteries)
         if target_num_batteries > max_batt:
             target_num_batteries = max_batt
 
@@ -1625,7 +1701,7 @@ class MarstekCoordinator:
                     grid_power = 0.0
 
                 battery_powers: dict[str, float | None] = {
-                    b: self._get_float_state(f"sensor.{b}_ac_power") for b in self._battery_entities
+                    b["id"]: self._get_float_state(b["ac_power"]) for b in self._batteries
                 }
                 total_battery_power = sum(p for p in battery_powers.values() if p is not None)
 
@@ -1658,66 +1734,6 @@ class MarstekCoordinator:
                 round(abs_power, 0),
             )
 
-        min_surplus_for_charging = self.config.get(CONF_MIN_SURPLUS, 50)
-        min_consumption_for_discharging = self.config.get(CONF_MIN_CONSUMPTION, 50)
-
-        # Check minimum thresholds to activate charging/discharging
-        if self._last_power_direction == PowerDir.CHARGE and abs_power < min_surplus_for_charging:
-            self._below_min_charge_count += 1
-            self._below_min_discharge_count = 0
-            _LOGGER.debug(
-                "Charging power (%sW) below minimum surplus threshold (%sW). below_min_charge_count=%s/%s",
-                round(abs_power, 0),
-                min_surplus_for_charging,
-                self._below_min_charge_count,
-                self._below_min_cycles_to_zero,
-            )
-            if self._below_min_charge_count >= self._below_min_cycles_to_zero:
-                _LOGGER.debug(
-                    "Charging power below minimum threshold for %s consecutive cycles. Setting all batteries to 0W.",
-                    self._below_min_cycles_to_zero,
-                )
-                self._below_min_charge_count = 0
-                await self._set_all_batteries_to_zero()
-
-                if from_pid:
-                    self._pid_suspended = True
-                    self._pid_suspend_direction = PowerDir.CHARGE
-                    self._reset_pid_state()
-                return
-        
-        if self._last_power_direction == PowerDir.DISCHARGE and abs_power < min_consumption_for_discharging:
-            self._below_min_discharge_count += 1
-            self._below_min_charge_count = 0
-            _LOGGER.debug(
-                "Discharging power (%sW) below minimum consumption threshold (%sW). below_min_discharge_count=%s/%s",
-                round(abs_power, 0),
-                min_consumption_for_discharging,
-                self._below_min_discharge_count,
-                self._below_min_cycles_to_zero,
-            )
-            if self._below_min_discharge_count >= self._below_min_cycles_to_zero:
-                _LOGGER.debug(
-                    "Discharging power below minimum threshold for %s consecutive cycles. Setting all batteries to 0W.",
-                    self._below_min_cycles_to_zero,
-                )
-                self._below_min_discharge_count = 0
-                await self._set_all_batteries_to_zero()
-
-                if from_pid:
-                    self._pid_suspended = True
-                    self._pid_suspend_direction = PowerDir.DISCHARGE
-                    self._reset_pid_state()
-                return
-
-        # Reset counters when above minimum thresholds
-        if (
-            (self._last_power_direction == PowerDir.CHARGE and abs_power >= min_surplus_for_charging)
-            or (self._last_power_direction == PowerDir.DISCHARGE and abs_power >= min_consumption_for_discharging)
-        ):
-            self._below_min_charge_count = 0
-            self._below_min_discharge_count = 0
-
         # If no batteries should be active, ensure everything is set to 0 and exit.
         if target_num_batteries == 0:
             await self._set_all_batteries_to_zero()
@@ -1746,16 +1762,13 @@ class MarstekCoordinator:
                 excluded_due_to_soc = False
                 eligible: list[dict[str, Any]] = []
                 for b in active_batteries:
-                    base_entity_id = b.get("id") if isinstance(b, dict) else None
-                    if not isinstance(base_entity_id, str) or not base_entity_id:
-                        continue
-                    soc = self._get_float_state(f"sensor.{base_entity_id}_battery_soc")
+                    soc = self._get_float_state(b["soc"])
                     if soc is None:
                         continue
                     if self._last_power_direction == PowerDir.CHARGE and soc >= max_soc:
                         _LOGGER.debug(
                             "Excluding battery %s from CHARGE: soc=%s >= max_soc=%s",
-                            base_entity_id,
+                            b["id"],
                             soc,
                             max_soc,
                         )
@@ -1764,7 +1777,7 @@ class MarstekCoordinator:
                     if self._last_power_direction == PowerDir.DISCHARGE and soc <= min_soc:
                         _LOGGER.debug(
                             "Excluding battery %s from DISCHARGE: soc=%s <= min_soc=%s",
-                            base_entity_id,
+                            b["id"],
                             soc,
                             min_soc,
                         )
@@ -1817,8 +1830,9 @@ class MarstekCoordinator:
         active_battery_ids = [b["id"] for b in active_batteries]
 
         per_batt_cap: dict[str, int] = {}
-        for b in active_battery_ids:
-            soc = self._get_float_state(f"sensor.{b}_battery_soc")
+        for b_id in active_battery_ids:
+            batt = next((b for b in self._batteries if b["id"] == b_id), None)
+            soc = self._get_float_state(batt["soc"]) if batt else None
             if soc is None:
                 # If SoC unknown, allow full configured max
                 cap = int(max_charge_power) if self._last_power_direction == PowerDir.CHARGE else int(max_discharge_power)
@@ -1852,7 +1866,7 @@ class MarstekCoordinator:
                     else:
                         cap = int(max_discharge_power)
                     cap = min(cap, int(max_discharge_power))
-            per_batt_cap[b] = max(0, int(cap))
+            per_batt_cap[b_id] = max(0, int(cap))
 
         # Allocate requested power among active batteries respecting per-battery caps using iterative water-filling
         remaining = int(round(abs_power))
@@ -1886,18 +1900,19 @@ class MarstekCoordinator:
             allocations,
         )
 
-        for battery_base_id in self._battery_entities:
-            if battery_base_id in allocations and allocations[battery_base_id] > 0:
-                await self._set_battery_power(battery_base_id, allocations[battery_base_id], self._last_power_direction)
+        for batt in self._batteries:
+            batt_id = batt["id"]
+            if batt_id in allocations and allocations[batt_id] > 0:
+                await self._set_battery_power(batt, allocations[batt_id], self._last_power_direction)
             else:
-                await self._set_battery_power(battery_base_id, 0, 0)
+                await self._set_battery_power(batt, 0, 0)
 
-    async def _set_battery_power(self, base_entity_id: str, power: int, direction: int):
+    async def _set_battery_power(self, batt: dict, power: int, direction: int):
         """Set the charge or discharge power for a single battery."""
-        charge_entity = f"number.{base_entity_id}_modbus_set_forcible_charge_power"
-        discharge_entity = f"number.{base_entity_id}_modbus_set_forcible_discharge_power"
-        force_mode= f"select.{base_entity_id}_modbus_force_mode"
-        modbus_control_mode = f"switch.{base_entity_id}_modbus_rs485_control_mode"
+        charge_entity = batt["charge_power"]
+        discharge_entity = batt["discharge_power"]
+        force_mode = batt["force_mode"]
+        modbus_control_mode = batt["rs485_mode"]
         # Ensure Modbus control mode is set to 'forcible'
         await self._async_call_cached(
             "switch",
@@ -1980,12 +1995,12 @@ class MarstekCoordinator:
             # Add a small delay to prevent overwhelming the device APIs
             await asyncio.sleep(0.1)
         except Exception as e:
-            _LOGGER.error(f"Failed to set power for {base_entity_id}: {e}")
+            _LOGGER.error(f"Failed to set power for {batt['id']}: {e}")
 
     async def _set_all_batteries_to_zero(self):
         """Set all configured batteries power to 0."""
         _LOGGER.debug("Setting all batteries to 0W.")
-        tasks = [self._set_battery_power(b_id, 0, 0) for b_id in self._battery_entities]
+        tasks = [self._set_battery_power(batt, 0, 0) for batt in self._batteries]
         if not tasks:
             return
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -1995,12 +2010,6 @@ class MarstekCoordinator:
 
     async def _disable_modbus_control_mode(self, target_num_batteries: int = 1):
         """Disable Modbus RS485 control mode based on power stages and battery priority with Make-Before-Break logic.
-    
-        - Power < Stage1: Disable only for highest priority battery, enable for others
-        - Stage1 <= Power < Stage2: Disable for top 2 batteries, enable for others
-        - Power >= Stage2: Disable for all batteries (full automatic mode)
-        - No power direction: Disable for all batteries
-
         1. Identifies batteries that need to be ADDED to automatic mode.
         2. Identifies batteries that need to be REMOVED from automatic mode.
         3. Activates new batteries first, waits 15s, then deactivates old ones.
@@ -2012,10 +2021,10 @@ class MarstekCoordinator:
 
         # 1. Bestimme, welche Batterien aktuell im Automatik-Modus sind (Modbus Switch OFF)
         current_auto_ids = []
-        for b_id in self._battery_entities:
-            state = self.hass.states.get(f"switch.{b_id}_modbus_rs485_control_mode")
-            if state and state.state == "off":  # off bedeutet Automatik aktiv
-                current_auto_ids.append(b_id)
+        for batt in self._batteries:
+            state = self.hass.states.get(batt["rs485_mode"])
+            if state and state.state == "off":
+                current_auto_ids.append(batt["id"])
 
         # Batterien, die NEU in den Automatik-Modus sollen
         to_activate_auto = [bid for bid in target_ids if bid not in current_auto_ids]
@@ -2026,10 +2035,10 @@ class MarstekCoordinator:
         # --- SCHRITT 1: Neue Batterien zuerst aktivieren ---
         if to_activate_auto:
             _LOGGER.debug("CT-Mode: Activating additional batteries for automatic mode: %s", to_activate_auto)
-            for b_id in to_activate_auto:
-                modbus_control_mode = f"switch.{b_id}_modbus_rs485_control_mode"
-                await self.hass.services.async_call("switch", "turn_off", {"entity_id": modbus_control_mode}, blocking=True)
-            
+            for batt_id in to_activate_auto:
+                batt = next((b for b in self._batteries if b["id"] == batt_id), None)
+                if batt:
+                    await self.hass.services.async_call("switch", "turn_off", {"entity_id": batt["rs485_mode"]}, blocking=True)
             # Wenn wir Batterien hinzugefügt haben, warten wir 10 Sekunden, bevor wir andere abschalten
             if to_deactivate_auto:
                 _LOGGER.debug("CT-Mode: Waiting 10s for power stabilization before deactivating old batteries...")
@@ -2038,12 +2047,11 @@ class MarstekCoordinator:
         # --- SCHRITT 2: Alte Batterien deaktivieren (auf Manual/Forcible zurücksetzen) ---
         if to_deactivate_auto:
             _LOGGER.debug("CT-Mode: Returning batteries to manual/forcible mode: %s", to_deactivate_auto)
-            for b_id in to_deactivate_auto:
-                modbus_control_mode = f"switch.{b_id}_modbus_rs485_control_mode"
-                # Erst Modbus-Steuerung wieder an
-                await self.hass.services.async_call("switch", "turn_on", {"entity_id": modbus_control_mode}, blocking=True)
-                # Dann auf 0W setzen, damit sie nicht "irgendwas" machen
-                await self._set_battery_power(b_id, 0, 0)
+            for batt_id in to_deactivate_auto:
+                batt = next((b for b in self._batteries if b["id"] == batt_id), None)
+                if batt:
+                    await self.hass.services.async_call("switch", "turn_on", {"entity_id": batt["rs485_mode"]}, blocking=True)
+                    await self._set_battery_power(batt, 0, 0)
 
         _LOGGER.debug(f"CT-Mode distribution finished. Active in Auto: {target_ids}")
 
