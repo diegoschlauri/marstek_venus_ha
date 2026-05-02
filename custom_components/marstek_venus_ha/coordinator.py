@@ -1619,8 +1619,8 @@ class MarstekCoordinator:
                 # HYSTERESE: Slowly decrease the counter instead of resetting immediately to 0
                 self._below_min_charge_count = max(0, self._below_min_charge_count - 1)
             
-            # Declare Max Counts times 2 to not increase to high
-            self._below_min_charge_count = min(self._below_min_charge_count, 2*(max_cycles))
+            # Declare Max Counts to not increase to high
+            self._below_min_charge_count = min(self._below_min_charge_count, (max_cycles))
                 
             # --- SCHMITT-TRIGGER (Zustands-Hysterese) ---
             if self._below_min_charge_count >= max_cycles:
@@ -1640,8 +1640,8 @@ class MarstekCoordinator:
                 # HYSTERESE: Slowly decrease the counter instead of resetting immediately to 0
                 self._below_min_discharge_count = max(0, self._below_min_discharge_count - 1)
             
-            # Declare Max Counts times 2 to not increase to high
-            self._below_min_discharge_count = min(self._below_min_discharge_count, 2*(max_cycles))
+            # Declare Max Counts to not increase to high
+            self._below_min_discharge_count = min(self._below_min_discharge_count, (max_cycles))
             
             # --- SCHMITT-TRIGGER (Zustands-Hysterese) ---
             if self._below_min_discharge_count >= max_cycles:
@@ -2012,7 +2012,7 @@ class MarstekCoordinator:
         """Disable Modbus RS485 control mode based on power stages and battery priority with Make-Before-Break logic.
         1. Identifies batteries that need to be ADDED to automatic mode.
         2. Identifies batteries that need to be REMOVED from automatic mode.
-        3. Activates new batteries first, waits 15s, then deactivates old ones.
+        3. Activates new batteries first, waits 30s, then deactivates old ones.
         """
 
 
@@ -2041,8 +2041,8 @@ class MarstekCoordinator:
                     await self.hass.services.async_call("switch", "turn_off", {"entity_id": batt["rs485_mode"]}, blocking=True)
             # Wenn wir Batterien hinzugefügt haben, warten wir 10 Sekunden, bevor wir andere abschalten
             if to_deactivate_auto:
-                _LOGGER.debug("CT-Mode: Waiting 10s for power stabilization before deactivating old batteries...")
-                await asyncio.sleep(15)
+                _LOGGER.debug("CT-Mode: Waiting 30s for power stabilization before deactivating old batteries...")
+                await asyncio.sleep(30)
 
         # --- SCHRITT 2: Alte Batterien deaktivieren (auf Manual/Forcible zurücksetzen) ---
         if to_deactivate_auto:
