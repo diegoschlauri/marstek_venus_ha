@@ -72,19 +72,24 @@ class ControlSwitch(SwitchEntity):
             _LOGGER.info("Battery control has been enabled.")
             self._data._control_enabled = True
             await self._data.async_save_settings()
+            self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
+            self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
             self.async_write_ha_state()
             async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
             if hasattr(self._data, "async_request_update"):
                 self.hass.async_create_task(self._data.async_request_update(reason="control_enabled"))
+            await self._data.async_start_listening()  # Start listening to updates when control is enabled
 
     async def async_turn_off(self, **kwargs):
         """Turn the switch off."""
         if self._data._control_enabled:
             self._data._control_enabled = False
             await self._data.async_save_settings()
+            self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
+            self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
             self.async_write_ha_state()
             async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
-            await self._data.async_pause_control()
+            await self._data.async_stop_listening()  # Stop listening to updates when control is disabled
 
 class ChargingSwitch(SwitchEntity):
     def __init__(self, entry: ConfigEntry, data_object: MarstekCoordinator):

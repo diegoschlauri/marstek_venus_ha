@@ -775,6 +775,7 @@ class MarstekCoordinator:
             except Exception:
                 pass
         self._unsub_listeners.clear()
+        self._service_call_cache.clear()
 
         if self._update_task is not None and not self._update_task.done():
             self._update_task.cancel()
@@ -796,6 +797,14 @@ class MarstekCoordinator:
     async def _async_update(self, now=None):
         """Fetch new data and run the logic."""
         # Note: logging is handled by _run_update to include a reason.
+
+        # Early exit if control is disabled, to avoid unnecessary processing and to ensure batteries are set to 0W immediately when user disables control.
+        if not self._control_enabled:
+            self._battery_priority = []
+            self._last_power_direction = PowerDir.NEUTRAL
+            # Optional: Alles auf 0 setzen zur Sicherheit
+            await self._set_all_batteries_to_zero()
+            return
 
         # Net grid power (import/export). This is the signal PID should drive towards 0W.
         smoothed_grid_power = self._get_smoothed_grid_power()
@@ -1328,10 +1337,9 @@ class MarstekCoordinator:
                     # Wenn es nicht der erste Versuch ist, aber der Cooldown abgelaufen ist,
                     # wird dies als INFO geloggt, da es ein normaler Retry ist.
                     if cooldown_elapsed:
-                         _LOGGER.info(f"High surplus ({abs(real_power):.0f}W) and inactive wallbox. Cooldown elapsed. Starting pause for car (batteries to 0 for {start_delay}s).")
+                        _LOGGER.info(f"High surplus ({abs(real_power):.0f}W) and inactive wallbox. Cooldown elapsed. Starting pause for car (batteries to 0 for {start_delay}s).")
                     else: # is_first_attempt
-                         _LOGGER.info(f"High surplus ({abs(real_power):.0f}W) and wallbox just connected. Starting initial pause for car (batteries to 0 for {start_delay}s).")
-                         
+                        _LOGGER.info(f"High surplus ({abs(real_power):.0f}W) and wallbox just connected. Starting initial pause for car (batteries to 0 for {start_delay}s).")
                     self._last_wallbox_pause_attempt = now # Cooldown-Timer (für den nächsten Versuch) starten
                     self._wallbox_wait_start = now        # Start-Delay-Timer (für den aktuellen Versuch) starten
                     self._wallbox_charge_paused = True 
@@ -1354,10 +1362,10 @@ class MarstekCoordinator:
                     # Wenn es nicht der erste Versuch ist, aber der Cooldown abgelaufen ist,
                     # wird dies als INFO geloggt, da es ein normaler Retry ist.
                     if cooldown_elapsed:
-                         _LOGGER.info(f"High surplus ({abs(real_power - wb_power):.0f}W) and charging wallbox. Cooldown elapsed. Starting pause for car (batteries to 0 for {start_delay}s).")
+                        _LOGGER.info(f"High surplus ({abs(real_power - wb_power):.0f}W) and charging wallbox. Cooldown elapsed. Starting pause for car (batteries to 0 for {start_delay}s).")
                     else: # is_first_attempt
-                         _LOGGER.info(f"High surplus ({abs(real_power - wb_power):.0f}W) and wallbox just connected. Starting initial pause for car (batteries to 0 for {start_delay}s).")
-                         
+                        _LOGGER.info(f"High surplus ({abs(real_power - wb_power):.0f}W) and wallbox just connected. Starting initial pause for car (batteries to 0 for {start_delay}s).")
+
                     self._last_wallbox_pause_attempt = now # Cooldown-Timer (für den nächsten Versuch) starten
                     self._wallbox_wait_start = now        # Start-Delay-Timer (für den aktuellen Versuch) starten
                     self._wallbox_charge_paused = True
@@ -2099,13 +2107,3 @@ class MarstekCoordinator:
         else:
             # Normal mode: use configured interval
             return configured_interval
-
-    async def async_pause_control(self):
-        """Pause all control and set batteries to a safe state."""
-        _LOGGER.info("Battery control disabled. Setting all batteries to 0W and resetting state.")
-        async with self._update_lock:
-            await self._set_all_batteries_to_zero()
-            self._reset_pid_state()
-        # Reset internal state to ensure clean start when resuming
-        self._battery_priority = []
-        self._last_power_direction = PowerDir.NEUTRAL
