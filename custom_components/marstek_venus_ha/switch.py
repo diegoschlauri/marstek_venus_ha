@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 
 from homeassistant.components.switch import SwitchEntity
@@ -8,11 +9,82 @@ from homeassistant.helpers.entity import DeviceInfo
 from .coordinator import MarstekCoordinator, PowerDir
 from .const import DOMAIN, SIGNAL_DIAGNOSTICS_UPDATED
 
+_LOGGER = logging.getLogger(__name__)
+
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([ChargingSwitch(entry, coordinator), DischargingSwitch(entry, coordinator), WallboxPrioritySwitch(entry, coordinator), BlockDischargingCCSwitch(entry, coordinator)])
+    async_add_entities([
+        ControlSwitch(entry, coordinator),
+        ChargingSwitch(entry, coordinator),
+        DischargingSwitch(entry, coordinator),
+        WallboxPrioritySwitch(entry, coordinator),
+        BlockDischargingCCSwitch(entry, coordinator)
+    ])
 
+
+class ControlSwitch(SwitchEntity):
+    """Switch to enable/disable the entire integration's control logic."""
+
+    def __init__(self, entry: ConfigEntry, data_object: MarstekCoordinator):
+        """Initialize the switch."""
+        self._entry = entry
+        self._data = data_object
+        self._attr_name = "Control Batteries"
+        self._attr_unique_id = f"{entry.entry_id}_control_switch"
+
+    @property
+    def available(self) -> bool:
+        """Return if the switch is available."""
+        return True  # Always available to allow re-enabling control
+
+    @property
+    def is_on(self) -> bool:
+        """Return true if the switch is on."""
+        return bool(self._data._control_enabled)
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device info."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.entry_id)},
+            name="Marstek Venus HA",
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """Register callbacks."""
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_DIAGNOSTICS_UPDATED,
+                self._handle_coordinator_update,
+            )
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self.async_write_ha_state()
+
+    async def async_turn_on(self, **kwargs):
+        """Turn the switch on."""
+        if not self._data._control_enabled:
+            _LOGGER.info("Battery control has been enabled.")
+            self._data._control_enabled = True
+            await self._data.async_save_settings()
+            self.async_write_ha_state()
+            async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
+            if hasattr(self._data, "async_request_update"):
+                self.hass.async_create_task(self._data.async_request_update(reason="control_enabled"))
+
+    async def async_turn_off(self, **kwargs):
+        """Turn the switch off."""
+        if self._data._control_enabled:
+            self._data._control_enabled = False
+            await self._data.async_save_settings()
+            self.async_write_ha_state()
+            async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
+            await self._data.async_pause_control()
 
 class ChargingSwitch(SwitchEntity):
     def __init__(self, entry: ConfigEntry, data_object: MarstekCoordinator):
