@@ -128,7 +128,7 @@ class MarstekCoordinator:
         # Version will be loaded asynchronously
         self._manifest_version = "unknown"
 
-        self._service_call_cache: dict[tuple[str, str, str, str], tuple[Any, datetime]] = {}
+        self._service_call_cache: dict[tuple[str, str, str], tuple[Any, datetime]] = {}
         self._service_call_cache_ttl_seconds = self.config.get(
             CONF_SERVICE_CALL_CACHE_SECONDS,
             DEFAULT_SERVICE_CALL_CACHE_SECONDS,
@@ -543,7 +543,7 @@ class MarstekCoordinator:
     ) -> None:
         ttl = self._get_service_call_cache_ttl()
         now = datetime.now()
-        cache_key = (domain, service, entity_id, cache_field)
+        cache_key = (domain, entity_id, cache_field)
 
         if not force:
             cached = self._service_call_cache.get(cache_key)
@@ -694,7 +694,15 @@ class MarstekCoordinator:
                     modbus_control_mode = batt.get("rs485_mode")
                     if modbus_control_mode:
                         try:
-                            await self.hass.services.async_call("switch", "turn_off", {"entity_id": modbus_control_mode}, blocking=True)
+                            await self._async_call_cached(
+                                "switch",
+                                "turn_off",
+                                modbus_control_mode,
+                                "state",
+                                False,
+                                {"entity_id": modbus_control_mode},
+                                blocking=True
+                            )
                         except Exception as e:
                             _LOGGER.debug(f"Could not disable RS485 mode for {batt['id']}: {e}")
             else:
@@ -2050,7 +2058,15 @@ class MarstekCoordinator:
             for batt_id in to_activate_auto:
                 batt = next((b for b in self._batteries if b["id"] == batt_id), None)
                 if batt:
-                    await self.hass.services.async_call("switch", "turn_off", {"entity_id": batt["rs485_mode"]}, blocking=True)
+                    await self._async_call_cached(
+                        "switch",
+                        "turn_off",
+                        batt["rs485_mode"],
+                        "state",
+                        False,
+                        {"entity_id": batt["rs485_mode"]},
+                        blocking=True
+                    )
             # Wenn wir Batterien hinzugefügt haben, warten wir 10 Sekunden, bevor wir andere abschalten
             if to_deactivate_auto:
                 _LOGGER.debug("CT-Mode: Waiting 30s for power stabilization before deactivating old batteries...")
@@ -2062,7 +2078,6 @@ class MarstekCoordinator:
             for batt_id in to_deactivate_auto:
                 batt = next((b for b in self._batteries if b["id"] == batt_id), None)
                 if batt:
-                    await self.hass.services.async_call("switch", "turn_on", {"entity_id": batt["rs485_mode"]}, blocking=True)
                     await self._set_battery_power(batt, 0, 0)
 
         _LOGGER.debug(f"CT-Mode distribution finished. Active in Auto: {target_ids}")
@@ -2088,5 +2103,9 @@ class MarstekCoordinator:
     async def async_pause_control(self):
         """Pause all control and set batteries to a safe state."""
         _LOGGER.info("Battery control disabled. Setting all batteries to 0W and resetting state.")
-        await self._set_all_batteries_to_zero()
-        self._reset_pid_state()
+        async with self._update_lock:
+            await self._set_all_batteries_to_zero()
+            self._reset_pid_state()
+        # Reset internal state to ensure clean start when resuming
+        self._battery_priority = []
+        self._last_power_direction = PowerDir.NEUTRAL
