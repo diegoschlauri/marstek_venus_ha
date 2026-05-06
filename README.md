@@ -165,6 +165,7 @@ The absolute grid power determines the number of active batteries. Instead of co
 
 ### Control Switches
 The integration provides dedicated switches in Home Assistant to manually override behaviors:
+* **Control Batteries** (`switch.*._control_switch`): Master switch to enable/disable all battery control logic. When disabled, all batteries are set to 0W and the integration becomes idle.
 * **Charging Allowed** (`switch.*._charging_switch`): Manually allow/block the batteries from charging.
 * **Discharging Allowed** (`switch.*._discharging_switch`): Manually allow/block the batteries from discharging into the house.
 * **Wallbox Priority** (`switch.*._wallbox_priority_switch`): Enable/disable the logic that prioritizes the EV over home batteries.

@@ -122,6 +122,7 @@ class MarstekCoordinator:
         self._allow_charging = True
         self._allow_discharging = True
         self._block_discharging_while_carcharging = True
+        self._control_enabled = True
         self._wallbox_priority = True
 
         # Version will be loaded asynchronously
@@ -214,12 +215,14 @@ class MarstekCoordinator:
         stored_data = await self._store.async_load()
         if stored_data:
             # Get values with defaults if they don't exist in the JSON
+            self._control_enabled = stored_data.get("control_enabled", True)
             self._allow_charging = stored_data.get("allow_charging", True)
             self._allow_discharging = stored_data.get("allow_discharging", True)
             self._block_discharging_while_carcharging = stored_data.get("block_discharging_while_carcharging", True)
             self._wallbox_priority = stored_data.get("wallbox_priority", True)
         else:
             # If no store exists yet, use your defaults
+            self._control_enabled = True
             self._allow_charging = True
             self._allow_discharging = True
             self._block_discharging_while_carcharging = True
@@ -228,6 +231,7 @@ class MarstekCoordinator:
     async def async_save_settings(self) -> None:
         """Save current settings to store."""
         await self._store.async_save({
+            "control_enabled": self._control_enabled,
             "allow_charging": self._allow_charging,
             "allow_discharging": self._allow_discharging,
             "block_discharging_while_carcharging": self._block_discharging_while_carcharging,
@@ -302,6 +306,10 @@ class MarstekCoordinator:
     @property
     def allow_discharging(self) -> bool:
         return self._allow_discharging
+
+    @property
+    def control_enabled(self) -> bool:
+        return self._control_enabled
 
     @property
     def block_discharging_while_carcharging(self) -> bool:
@@ -711,6 +719,10 @@ class MarstekCoordinator:
         It enforces a minimum interval between updates and prevents concurrent runs.
         """
         # Blocking updates, while startup or startdelay
+        if not self._control_enabled:
+            _LOGGER.debug("Battery control is disabled, skipping update.")
+            return
+
         if not self._is_running or not getattr(self, "_ready_to_command", True):
             return
 
@@ -2072,3 +2084,9 @@ class MarstekCoordinator:
         else:
             # Normal mode: use configured interval
             return configured_interval
+
+    async def async_pause_control(self):
+        """Pause all control and set batteries to a safe state."""
+        _LOGGER.info("Battery control disabled. Setting all batteries to 0W and resetting state.")
+        await self._set_all_batteries_to_zero()
+        self._reset_pid_state()
