@@ -162,7 +162,10 @@ class MarstekCoordinator:
         self._last_grid_power_raw: float | None = None
         self._below_min_cycles_to_zero = self.config.get(CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING, 10)
 
-        
+        # Stable Powerdirection Logic for Battery Priority
+        self._power_direction_change_start: datetime | None = None
+        self._priority_list_power_direction: PowerDir | None = None
+
         # Wallbox state (persisted via ConfigEntry options key "wallbox_priority")
         self._wallbox_charge_paused = False
         self._wallbox_power_is_stable = False
@@ -1386,47 +1389,55 @@ class MarstekCoordinator:
         power_direction: PowerDir | None = None,
     ):
         """Check conditions and update battery priority list."""
-        
+    
         if power_direction is None:
             if real_power is None:
                 return
-
+    
             # power direction: CHARGE for charging, DISCHARGE for discharging, NEUTRAL for neutral
             power_direction = PowerDir.NEUTRAL
-
+    
             # decide the new direction
             if real_power < 0:
                 power_direction = PowerDir.CHARGE
             elif real_power > 0:
                 power_direction = PowerDir.DISCHARGE
-
+    
         try:
             priority_minutes = float(self.config.get(CONF_PRIORITY_INTERVAL, DEFAULT_PRIORITY_INTERVAL) or DEFAULT_PRIORITY_INTERVAL)
         except (TypeError, ValueError):
             priority_minutes = float(DEFAULT_PRIORITY_INTERVAL)
         priority_interval = timedelta(minutes=priority_minutes)
         time_since_last_update = datetime.now() - self._last_priority_update
-
-        # Rate limit: only allow updates at most once per 10 seconds
-        min_update_interval = timedelta(seconds=10)
-
-        # If we have no priority list yet, allow an update immediately so the control loop can start.
-        needs_initial_priority = not self._battery_priority
-
-        if (
-            power_direction != self._last_power_direction or
-            time_since_last_update > priority_interval or
-            needs_initial_priority
+    
+        # Duration for stable power_direction for change
+        min_power_direction_duration = timedelta(seconds=30)
+    
+        # Check for power_direction change
+        direction_change_sustained = False
+        if self._priority_list_power_direction != power_direction:
+            if self._power_direction_change_start is None:
+                self._power_direction_change_start = datetime.now()
+            elif datetime.now() - self._power_direction_change_start >= min_power_direction_duration:
+                # PowerDirection changed for long enought
+                direction_change_sustained = True
+        else:
+            # no direction change, reset the timer
+            self._power_direction_change_start = None
+    
+        # check the conditions for prio list change
+        if not (
+            time_since_last_update >= priority_interval
+            or direction_change_sustained
+            or not self._battery_priority
         ):
-            # Check if enough time has passed since last update
-            direction_changed = power_direction != self._last_power_direction
-            if direction_changed or needs_initial_priority or time_since_last_update >= min_update_interval:
-                _LOGGER.info(f"Recalculating battery priority. Reason: {'Power direction changed' if power_direction != self._last_power_direction else 'Time interval elapsed'}")
-                await self._calculate_battery_priority(power_direction)
-                self._last_power_direction = power_direction
-                self._last_priority_update = datetime.now()
-            else:
-                _LOGGER.debug(f"Priority update triggered but rate-limited. Will retry in {(min_update_interval - time_since_last_update).total_seconds():.0f}s")
+            return
+    
+        # Recalculate the priority list
+        _LOGGER.info(f"Recalculating battery priority. Reason: {'Sustained power direction change' if direction_change_sustained else 'Time interval elapsed'}")
+        await self._calculate_battery_priority(power_direction)
+        self._last_priority_update = datetime.now()
+        self._priority_list_power_direction = power_direction
 
     async def _calculate_battery_priority(self, power_direction: PowerDir):
         """Calculate the sorted list of batteries based on SoC."""
