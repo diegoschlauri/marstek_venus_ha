@@ -162,7 +162,10 @@ class MarstekCoordinator:
         self._last_grid_power_raw: float | None = None
         self._below_min_cycles_to_zero = self.config.get(CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING, 10)
 
-        
+        # Stable Powerdirection Logic for Battery Priority
+        self._power_direction_change_start: datetime | None = None
+        self._priority_list_power_direction: PowerDir | None = None
+
         # Wallbox state (persisted via ConfigEntry options key "wallbox_priority")
         self._wallbox_charge_paused = False
         self._wallbox_power_is_stable = False
@@ -817,6 +820,9 @@ class MarstekCoordinator:
         if real_power is None:
             _LOGGER.warning("Could not determine real power. Skipping update cycle.")
             return
+        
+        # Determine the current power direction for staging/hysteresis, priority and distribution logic
+        self._calculate_power_direction(real_power)
 
         wallbox_took_control = await self._handle_wallbox_logic(real_power)
         self._wallbox_is_active = wallbox_took_control
@@ -872,7 +878,7 @@ class MarstekCoordinator:
             return
 
         # Get battery priority
-        await self._update_battery_priority_if_needed(real_power)
+        await self._update_battery_priority_if_needed()
 
         # Determine desired number of batteries based on power stages
         number_of_batteries = self._get_desired_number_of_batteries(real_power) 
@@ -893,8 +899,6 @@ class MarstekCoordinator:
         error = -float(smoothed_grid_power)
         now = datetime.now()
 
-        min_surplus_for_charging = self.config.get(CONF_MIN_SURPLUS, 50)
-        min_consumption_for_discharging = self.config.get(CONF_MIN_CONSUMPTION, 50)
 
         if self._pid_prev_ts is None:
             dt = 0.0
@@ -905,24 +909,12 @@ class MarstekCoordinator:
         if dt > 0 and self._pid_prev_error is not None:
             derivative = (error - self._pid_prev_error) / dt
 
-        # NEU: Die Richtung wird NICHT mehr vom Error bestimmt, 
-        # sondern vom tatsächlichen Fluss am Hausanschluss - Batterien.
-        intended_direction = PowerDir.NEUTRAL
-        if real_power < -float(min_surplus_for_charging):  # Tatsächlicher Überschuss (Einspeisung) -> Laden
-            intended_direction = PowerDir.CHARGE
-        elif real_power > float(min_consumption_for_discharging): # Tatsächlicher Bezug -> Entladen
-            intended_direction = PowerDir.DISCHARGE
-        else:
-            # Wenn wir sehr nah an 0 sind, behalten wir die letzte Richtung bei,
-            # um "Zappeln" der Prioritätsliste zu vermeiden.
-            intended_direction = self._last_power_direction
-
         # Ensure priority is up to date for this direction
-        await self._update_battery_priority_if_needed(power_direction=intended_direction)
+        await self._update_battery_priority_if_needed()
 
         # If no batteries are available for the intended direction, reset PID and exit.
         if not self._battery_priority:
-            _LOGGER.debug("PID: no available batteries for direction %s — resetting PID state.", intended_direction.name)
+            _LOGGER.debug("PID: no available batteries for direction %s — resetting PID state.", self._last_power_direction.name)
             self._reset_pid_state()
             await self._set_all_batteries_to_zero()  # Ensure batteries are at 0 if PID cannot operate
             return
@@ -956,20 +948,16 @@ class MarstekCoordinator:
             await self._set_all_batteries_to_zero()
             return
 
-        direction = PowerDir.CHARGE if output > 0 else PowerDir.DISCHARGE
         requested_abs_power = int(round(abs(output)))
 
         # Update priority list with the same gating behavior as non-PID mode.
-        await self._update_battery_priority_if_needed(power_direction=direction)
-
-        # Ensure staging logic uses the intended direction
-        self._last_power_direction = direction
+        await self._update_battery_priority_if_needed()
 
         # Determine how many batteries to use based on requested output magnitude
         number_of_batteries = self._get_desired_number_of_batteries(requested_abs_power)
 
         # Clamp to configured max power before distributing
-        max_total = max_charge_power if direction == PowerDir.CHARGE else max_discharge_power
+        max_total = max_charge_power if self._last_power_direction == PowerDir.CHARGE else max_discharge_power
         requested_abs_power = min(requested_abs_power, max_total * max(1, number_of_batteries))
 
         # _distribute_power uses abs(power) and self._last_power_direction for mode,
@@ -1212,12 +1200,6 @@ class MarstekCoordinator:
         if real_power > 0:
             self._wallbox_power_gap_history.append(0) # If positive, add 0 to gap history to keep it updated and comparable
 
-        # Calculate new power direction
-        if real_power < 0:
-            self._last_power_direction = PowerDir.CHARGE
-        elif real_power >= 0:
-            self._last_power_direction = PowerDir.DISCHARGE
-
         # 1. Höchste Priorität: Entladeschutz, wenn Wallbox aktiv ist und Blockierung aktiviert ist
         if wb_power > 100 and self._last_power_direction == PowerDir.DISCHARGE and self._block_discharging_while_carcharging:
             _LOGGER.debug("Wallbox is active, blocking is on, ensuring batteries do not discharge.")
@@ -1379,67 +1361,57 @@ class MarstekCoordinator:
         # Kein Grund zur Intervention -> Normale Batterielogik ausführen lassen
         return False
 
-    async def _update_battery_priority_if_needed(
-        self,
-        real_power: float | None = None,
-        *,
-        power_direction: PowerDir | None = None,
-    ):
+    async def _update_battery_priority_if_needed(self):
         """Check conditions and update battery priority list."""
-        
-        if power_direction is None:
-            if real_power is None:
-                return
-
-            # power direction: CHARGE for charging, DISCHARGE for discharging, NEUTRAL for neutral
-            power_direction = PowerDir.NEUTRAL
-
-            # decide the new direction
-            if real_power < 0:
-                power_direction = PowerDir.CHARGE
-            elif real_power > 0:
-                power_direction = PowerDir.DISCHARGE
-
+    
         try:
             priority_minutes = float(self.config.get(CONF_PRIORITY_INTERVAL, DEFAULT_PRIORITY_INTERVAL) or DEFAULT_PRIORITY_INTERVAL)
         except (TypeError, ValueError):
             priority_minutes = float(DEFAULT_PRIORITY_INTERVAL)
         priority_interval = timedelta(minutes=priority_minutes)
         time_since_last_update = datetime.now() - self._last_priority_update
-
-        # Rate limit: only allow updates at most once per 10 seconds
-        min_update_interval = timedelta(seconds=10)
-
-        # If we have no priority list yet, allow an update immediately so the control loop can start.
-        needs_initial_priority = not self._battery_priority
-
-        if (
-            power_direction != self._last_power_direction or
-            time_since_last_update > priority_interval or
-            needs_initial_priority
+    
+        # Duration for stable power_direction for change
+        min_power_direction_duration = timedelta(seconds=30)
+    
+        # Check for power_direction change
+        direction_change_sustained = False
+        if self._priority_list_power_direction != self._last_power_direction:
+            if self._power_direction_change_start is None:
+                self._power_direction_change_start = datetime.now()
+            elif datetime.now() - self._power_direction_change_start >= min_power_direction_duration:
+                # PowerDirection changed for long enought
+                direction_change_sustained = True
+        else:
+            # no direction change, reset the timer
+            self._power_direction_change_start = None
+    
+        # check the conditions for prio list change
+        if not (
+            time_since_last_update >= priority_interval
+            or direction_change_sustained
+            or not self._battery_priority
         ):
-            # Check if enough time has passed since last update
-            direction_changed = power_direction != self._last_power_direction
-            if direction_changed or needs_initial_priority or time_since_last_update >= min_update_interval:
-                _LOGGER.info(f"Recalculating battery priority. Reason: {'Power direction changed' if power_direction != self._last_power_direction else 'Time interval elapsed'}")
-                await self._calculate_battery_priority(power_direction)
-                self._last_power_direction = power_direction
-                self._last_priority_update = datetime.now()
-            else:
-                _LOGGER.debug(f"Priority update triggered but rate-limited. Will retry in {(min_update_interval - time_since_last_update).total_seconds():.0f}s")
+            return
+    
+        # Recalculate the priority list
+        _LOGGER.info(f"Recalculating battery priority. Reason: {'Sustained power direction change' if direction_change_sustained else 'Time interval elapsed'}")
+        await self._calculate_battery_priority()
+        self._last_priority_update = datetime.now()
+        self._priority_list_power_direction = self._last_power_direction
 
-    async def _calculate_battery_priority(self, power_direction: PowerDir):
+    async def _calculate_battery_priority(self):
         """Calculate the sorted list of batteries based on SoC."""
-        if power_direction == PowerDir.NEUTRAL:
+        if self._last_power_direction == PowerDir.NEUTRAL:
             self._battery_priority = []
             return
         
         # If charging or discharging is not allowed, set priority to empty to prevent any battery from being used in that direction.
-        if self._allow_charging is False and power_direction == PowerDir.CHARGE:
+        if self._allow_charging is False and self._last_power_direction == PowerDir.CHARGE:
             self._battery_priority = []
             _LOGGER.debug("Charging is disabled. Setting battery priority to empty for charging.")
             return
-        if self._allow_discharging is False and power_direction == PowerDir.DISCHARGE:
+        if self._allow_discharging is False and self._last_power_direction == PowerDir.DISCHARGE:
             self._battery_priority = []
             _LOGGER.debug("Discharging is disabled. Setting battery priority to empty for discharging.")
             return
@@ -1464,12 +1436,12 @@ class MarstekCoordinator:
             batt_copy = dict(batt)
             batt_copy["current_soc"] = soc
 
-            if power_direction == PowerDir.CHARGE and soc <= max_soc:
+            if self._last_power_direction == PowerDir.CHARGE and soc <= max_soc:
                 available_batteries.append(batt_copy)
-            elif power_direction == PowerDir.DISCHARGE and soc >= min_soc:
+            elif self._last_power_direction == PowerDir.DISCHARGE and soc >= min_soc:
                 available_batteries.append(batt_copy)
 
-        is_reverse = (power_direction == PowerDir.DISCHARGE)
+        is_reverse = (self._last_power_direction == PowerDir.DISCHARGE)
         self._battery_priority = sorted(available_batteries, key=lambda x: x['current_soc'], reverse=is_reverse)
         _LOGGER.debug(f"New battery priority: {self._battery_priority}")
         if missing_soc:
@@ -1622,15 +1594,7 @@ class MarstekCoordinator:
     async def _check_power_thresholds(self, real_power: float) -> bool:
         """Check if power is below thresholds using a Schmitt-Trigger logic to prevent toggling."""        
         abs_power = abs(real_power)
-        
-        # Declare powerdirection (at 0 it keeps the last direction)
-        if real_power > 0:
-            direction = PowerDir.DISCHARGE
-        elif real_power < 0:
-            direction = PowerDir.CHARGE
-        else:
-            direction = self._last_power_direction
-            
+                    
         try:
             min_surplus = float(self.config.get(CONF_MIN_SURPLUS, 50))
             min_cons = float(self.config.get(CONF_MIN_CONSUMPTION, 50))
@@ -1638,7 +1602,7 @@ class MarstekCoordinator:
         except (ValueError, TypeError):
             min_surplus, min_cons, max_cycles = 50.0, 50.0, 10
 
-        if direction == PowerDir.CHARGE:
+        if self._last_power_direction == PowerDir.CHARGE:
             self._below_min_discharge_count = 0  # Reset counter for the other direction
             self._discharge_suspended = False    # Reset suspension state for the other direction
             if abs_power < min_surplus:
@@ -1680,7 +1644,7 @@ class MarstekCoordinator:
             count = self._below_min_discharge_count
             is_suspended = self._discharge_suspended
 
-        _LOGGER.debug(f"Threshold check: direction={direction.name}, power={abs_power:.0f}W, counter={count}/{max_cycles}")
+        _LOGGER.debug(f"Threshold check: direction={self._last_power_direction.name}, power={abs_power:.0f}W, counter={count}/{max_cycles}")
 
         # Return whether the current direction is suspended due to being below thresholds for too long
         return is_suspended
@@ -1718,9 +1682,9 @@ class MarstekCoordinator:
                     )
                 abs_power = min(abs_power, pv_power)
 
-# detect real battery to grid export by looking for negative grid import
-# allow some slack for grid import, but not too much
-# if too much just limit the requested discharge by the current grid export (new import)
+        # detect real battery to grid export by looking for negative grid import
+        # allow some slack for grid import, but not too much
+        # if too much just limit the requested discharge by the current grid export (new import)
         if self._last_power_direction == PowerDir.DISCHARGE:
             if self._last_grid_power_raw is not None:
                 try:
@@ -1822,7 +1786,7 @@ class MarstekCoordinator:
                 # rebuild the candidate list. This allows switching to the next
                 # suitable battery immediately in the same update.
                 _LOGGER.debug("Battery reached SoC limit; recalculating priority (attempt %s/%s)", attempt + 1, max_attempts)
-                await self._calculate_battery_priority(self._last_power_direction)
+                await self._calculate_battery_priority()
                 active_batteries = self._battery_priority[:target_num_batteries]
 
         # Safeguard: if active_batteries is empty (priority list empty), set all to zero and return
@@ -2107,3 +2071,13 @@ class MarstekCoordinator:
         else:
             # Normal mode: use configured interval
             return configured_interval
+    
+    def _calculate_power_direction(self, real_power: float):
+        """Calculate the needed power direction."""
+        
+        if real_power > 0:
+            self._last_power_direction = PowerDir.DISCHARGE
+        elif real_power < 0:
+            self._last_power_direction = PowerDir.CHARGE
+        else:
+            self._last_power_direction = PowerDir.NEUTRAL
