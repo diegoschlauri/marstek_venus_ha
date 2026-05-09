@@ -144,6 +144,7 @@ class MarstekCoordinator:
         self._pid_prev_ts: datetime | None = None
         self._pid_suspended = False
         self._pid_suspend_direction: PowerDir = PowerDir.NEUTRAL
+        self._pid_control_direction: PowerDir = PowerDir.NEUTRAL
 
         self._is_running = False
         self._unsub_listeners: list[Any] = []
@@ -874,7 +875,7 @@ class MarstekCoordinator:
                 self._pid_suspend_direction = PowerDir.NEUTRAL
 
             _LOGGER.debug("PID input grid power: %sW (target=0W)", round(smoothed_grid_power, 2))
-            await self._pid_control_step(smoothed_grid_power, real_power)
+            await self._pid_control_step(smoothed_grid_power)
             return
 
         # Get battery priority
@@ -891,7 +892,7 @@ class MarstekCoordinator:
             # Distribute power among batteries via Modbus control
             await self._distribute_power(real_power, number_of_batteries)
 
-    async def _pid_control_step(self, smoothed_grid_power: float, real_power: float) -> None:
+    async def _pid_control_step(self, smoothed_grid_power: float) -> None:
         """Run one PID control step to drive smoothed_grid_power towards 0W."""
         # Error is defined such that:
         # - Surplus (smoothed_grid_power < 0) -> positive error -> positive output -> charging
@@ -909,7 +910,18 @@ class MarstekCoordinator:
         if dt > 0 and self._pid_prev_error is not None:
             derivative = (error - self._pid_prev_error) / dt
 
-        # Ensure priority is up to date for this direction
+        # Calculate raw PID output to determine control direction and battery priority before applying anti-windup and saturation.
+        raw_output = self._pid_compute_output(error, derivative)
+        
+        # Define control direction based on raw PID output before saturation, to ensure priority and staging logic is based on the intended direction of control rather than the potentially saturated output.
+        if raw_output > 10:
+            self._pid_control_direction = PowerDir.CHARGE
+        elif raw_output < -10:
+            self._pid_control_direction = PowerDir.DISCHARGE
+        else:
+            self._pid_control_direction = PowerDir.NEUTRAL
+
+        # Ensure priority is up to date for this global direction
         await self._update_battery_priority_if_needed()
 
         # If no batteries are available for the intended direction, reset PID and exit.
@@ -926,7 +938,6 @@ class MarstekCoordinator:
             max_discharge_power = int(DEFAULT_MAX_DISCHARGE_POWER)
             max_charge_power = int(DEFAULT_MAX_CHARGE_POWER)
 
-        raw_output = self._pid_compute_output(error, derivative)
         requested_abs_power = int(round(abs(raw_output)))
         number_of_batteries = self._get_desired_number_of_batteries(requested_abs_power)
 
@@ -950,14 +961,18 @@ class MarstekCoordinator:
 
         requested_abs_power = int(round(abs(output)))
 
-        # Update priority list with the same gating behavior as non-PID mode.
-        await self._update_battery_priority_if_needed()
+        # Set final control direction based on the PID output after anti-windup and saturation, to ensure we do not command charging if the output is strongly negative but was pulled up to a small positive value by anti-windup, for example.
+        if output > 0:
+            self._pid_control_direction = PowerDir.CHARGE
+        else:
+            self._pid_control_direction = PowerDir.DISCHARGE
+
 
         # Determine how many batteries to use based on requested output magnitude
         number_of_batteries = self._get_desired_number_of_batteries(requested_abs_power)
 
         # Clamp to configured max power before distributing
-        max_total = max_charge_power if self._last_power_direction == PowerDir.CHARGE else max_discharge_power
+        max_total = max_charge_power if self._pid_control_direction == PowerDir.CHARGE else max_discharge_power
         requested_abs_power = min(requested_abs_power, max_total * max(1, number_of_batteries))
 
         # _distribute_power uses abs(power) and self._last_power_direction for mode,
@@ -968,6 +983,7 @@ class MarstekCoordinator:
         self._pid_integral = 0.0
         self._pid_prev_error = None
         self._pid_prev_ts = None
+        self._pid_control_direction = PowerDir.NEUTRAL
 
     def _pid_compute_output(self, error: float, derivative: float) -> float:
         """Compute PID output in Watts (signed)."""
@@ -1669,7 +1685,8 @@ class MarstekCoordinator:
         max_discharge_power = self.config.get(CONF_MAX_DISCHARGE_POWER, 2500)
         max_charge_power = self.config.get(CONF_MAX_CHARGE_POWER, 2500)
 
-        if self._last_power_direction == PowerDir.CHARGE:
+        # Apply global caps from config before distributing to batteries only on PID control, not on regular distribution, to allow the latter to use the full range of available power when needed.
+        if self._pid_control_direction == PowerDir.CHARGE:
             pv_power = self._get_pv_power()
             if pv_power is not None:
                 pv_power = max(0.0, pv_power)
