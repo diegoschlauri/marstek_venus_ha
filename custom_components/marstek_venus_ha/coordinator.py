@@ -875,7 +875,7 @@ class MarstekCoordinator:
                 self._pid_suspend_direction = PowerDir.NEUTRAL
 
             _LOGGER.debug("PID input grid power: %sW (target=0W)", round(smoothed_grid_power, 2))
-            await self._pid_control_step(smoothed_grid_power)
+            await self._pid_control_step(smoothed_grid_power, real_power)
             return
 
         # Get battery priority
@@ -892,7 +892,7 @@ class MarstekCoordinator:
             # Distribute power among batteries via Modbus control
             await self._distribute_power(real_power, number_of_batteries)
 
-    async def _pid_control_step(self, smoothed_grid_power: float) -> None:
+    async def _pid_control_step(self, smoothed_grid_power: float, real_power: float) -> None:
         """Run one PID control step to drive smoothed_grid_power towards 0W."""
         # Error is defined such that:
         # - Surplus (smoothed_grid_power < 0) -> positive error -> positive output -> charging
@@ -912,14 +912,20 @@ class MarstekCoordinator:
 
         # Calculate raw PID output to determine control direction and battery priority before applying anti-windup and saturation.
         raw_output = self._pid_compute_output(error, derivative)
+
+        min_surplus_for_charging = self.config.get(CONF_MIN_SURPLUS, 50)
+        min_consumption_for_discharging = self.config.get(CONF_MIN_CONSUMPTION, 50)
         
         # Define control direction based on raw PID output before saturation, to ensure priority and staging logic is based on the intended direction of control rather than the potentially saturated output.
-        if raw_output > 10:
+        if raw_output > float(min_surplus_for_charging):
             self._pid_control_direction = PowerDir.CHARGE
-        elif raw_output < -10:
+        elif raw_output < -float(min_consumption_for_discharging):
             self._pid_control_direction = PowerDir.DISCHARGE
         else:
-            self._pid_control_direction = PowerDir.NEUTRAL
+            self._pid_control_direction = self._last_power_direction
+
+        # Update last power direction for the next cycle's staging/hysteresis logic, based on the control direction determined from the raw PID output before saturation.
+        self._last_power_direction = self._pid_control_direction
 
         # Ensure priority is up to date for this global direction
         await self._update_battery_priority_if_needed()
@@ -938,12 +944,25 @@ class MarstekCoordinator:
             max_discharge_power = int(DEFAULT_MAX_DISCHARGE_POWER)
             max_charge_power = int(DEFAULT_MAX_CHARGE_POWER)
 
-        requested_abs_power = int(round(abs(raw_output)))
-        number_of_batteries = self._get_desired_number_of_batteries(requested_abs_power)
+        # Calculate dynamic saturation limits for Anti-Windup
+        num_available = len(self._battery_priority)
+        
+        # Start with battery hardware limits
+        sat_pos = float(max_charge_power * max(1, num_available))
+        sat_neg = float(max_discharge_power * max(1, num_available))
 
-        sat_pos = float(max_charge_power * max(1, number_of_batteries))
-        sat_neg = float(max_discharge_power * max(1, number_of_batteries))
+        # Apply PV Cap to sat_pos
+        pv_power = self._get_pv_power()
+        if pv_power is not None:
+            sat_pos = min(sat_pos, max(0.0, pv_power))
 
+        # Apply Grid Export Prevention to sat_neg (Discharge limit)
+        if self._last_grid_power_raw is not None:
+            export_slack_w = 100.0
+            allowed_discharge = max(0.0, real_power + export_slack_w)
+            sat_neg = min(sat_neg, allowed_discharge)
+
+        # Compute final output with Anti-Windup using effective dynamic limits
         output = self._pid_apply_anti_windup(
             error,
             dt,
@@ -961,12 +980,15 @@ class MarstekCoordinator:
 
         requested_abs_power = int(round(abs(output)))
 
-        # Set final control direction based on the PID output after anti-windup and saturation, to ensure we do not command charging if the output is strongly negative but was pulled up to a small positive value by anti-windup, for example.
-        if output > 0:
+        if output > float(min_surplus_for_charging):
             self._pid_control_direction = PowerDir.CHARGE
-        else:
+        elif output < -float(min_consumption_for_discharging):
             self._pid_control_direction = PowerDir.DISCHARGE
+        else:
+            self._pid_control_direction = self._last_power_direction
 
+        # Keep track of the last power direction for staging/hysteresis and priority logic, based on the final PID output after applying anti-windup and saturation, to ensure the system's behavior reflects the actual control actions being taken rather than just the raw PID output.
+        self._last_power_direction = self._pid_control_direction
 
         # Determine how many batteries to use based on requested output magnitude
         number_of_batteries = self._get_desired_number_of_batteries(requested_abs_power)
@@ -1684,20 +1706,6 @@ class MarstekCoordinator:
         abs_power = requested_abs_power
         max_discharge_power = self.config.get(CONF_MAX_DISCHARGE_POWER, 2500)
         max_charge_power = self.config.get(CONF_MAX_CHARGE_POWER, 2500)
-
-        # Apply global caps from config before distributing to batteries only on PID control, not on regular distribution, to allow the latter to use the full range of available power when needed.
-        if self._pid_control_direction == PowerDir.CHARGE:
-            pv_power = self._get_pv_power()
-            if pv_power is not None:
-                pv_power = max(0.0, pv_power)
-                if abs_power > pv_power:
-                    _LOGGER.debug(
-                        "PV cap active. Requested charge=%sW, PV=%sW -> capping to %sW",
-                        round(abs_power, 0),
-                        round(pv_power, 0),
-                        round(pv_power, 0),
-                    )
-                abs_power = min(abs_power, pv_power)
 
         # detect real battery to grid export by looking for negative grid import
         # allow some slack for grid import, but not too much
