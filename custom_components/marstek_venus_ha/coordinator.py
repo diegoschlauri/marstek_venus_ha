@@ -1667,8 +1667,6 @@ class MarstekCoordinator:
             min_surplus, min_cons, max_cycles = 50.0, 50.0, 10
 
         if self._last_power_direction == PowerDir.CHARGE:
-            self._below_min_discharge_count = 0  # Reset counter for the other direction
-            self._discharge_suspended = False    # Reset suspension state for the other direction
             if abs_power < min_surplus:
                 self._below_min_charge_count += 1
             else:
@@ -1688,8 +1686,6 @@ class MarstekCoordinator:
             is_suspended = self._charge_suspended
             
         else: # DISCHARGE
-            self._below_min_charge_count = 0  # Reset counter for the other direction
-            self._charge_suspended = False    # Reset suspension state for the other direction
             if abs_power < min_cons:
                 self._below_min_discharge_count += 1
             else:
