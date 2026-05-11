@@ -40,6 +40,8 @@ CONF_PID_ENABLED = "pid_enabled"
 CONF_PID_KP = "pid_kp"
 CONF_PID_KI = "pid_ki"
 CONF_PID_KD = "pid_kd"
+CONF_PID_FEEDFORWARD_ENABLED = "pid_feedforward_enabled"
+CONF_PID_FEEDFORWARD_GAIN = "pid_feedforward_gain"
 # New Battery Configuration
 CONF_BATTERY_COUNT = "battery_count"
 DEFAULT_BATTERY_COUNT = 1
@@ -100,3 +102,5 @@ DEFAULT_PID_ENABLED = False
 DEFAULT_PID_KP = 0.6
 DEFAULT_PID_KI = 0.02
 DEFAULT_PID_KD = 0.0
+DEFAULT_PID_FEEDFORWARD_ENABLED = False
+DEFAULT_PID_FEEDFORWARD_GAIN = 0.8

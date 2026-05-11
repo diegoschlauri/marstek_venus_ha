@@ -70,10 +70,14 @@ from .const import (
     CONF_PID_KP,
     CONF_PID_KI,
     CONF_PID_KD,
+    CONF_PID_FEEDFORWARD_ENABLED,
+    CONF_PID_FEEDFORWARD_GAIN,
     DEFAULT_PID_ENABLED,
     DEFAULT_PID_KP,
     DEFAULT_PID_KI,
     DEFAULT_PID_KD,
+    DEFAULT_PID_FEEDFORWARD_ENABLED,
+    DEFAULT_PID_FEEDFORWARD_GAIN,
     DEFAULT_CHARGE_POWER_LEVEL_1,
     DEFAULT_CHARGE_POWER_LEVEL_2,
     DEFAULT_CHARGE_POWER_LEVEL_3,
@@ -138,7 +142,8 @@ class MarstekCoordinator:
         self._pid_kp = self.config.get(CONF_PID_KP, DEFAULT_PID_KP)
         self._pid_ki = self.config.get(CONF_PID_KI, DEFAULT_PID_KI)
         self._pid_kd = self.config.get(CONF_PID_KD, DEFAULT_PID_KD)
-
+        self._pid_feedforward_enabled = self.config.get(CONF_PID_FEEDFORWARD_ENABLED, DEFAULT_PID_FEEDFORWARD_ENABLED)
+        self._pid_feedforward_gain = self.config.get(CONF_PID_FEEDFORWARD_GAIN, DEFAULT_PID_FEEDFORWARD_GAIN)
         self._pid_integral = 0.0
         self._pid_prev_error: float | None = None
         self._pid_prev_ts: datetime | None = None
@@ -910,8 +915,15 @@ class MarstekCoordinator:
         if dt > 0 and self._pid_prev_error is not None:
             derivative = (error - self._pid_prev_error) / dt
 
+        # Calculate feed-forward term: 
+        # positive real_power (import) -> negative ff_term (discharge)
+        # negative real_power (surplus) -> positive ff_term (charge)
+        ff_term = 0.0
+        if self._pid_feedforward_enabled:
+            ff_term = -(float(self._pid_feedforward_gain) * real_power)
+
         # Calculate raw PID output to determine control direction and battery priority before applying anti-windup and saturation.
-        raw_output = self._pid_compute_output(error, derivative)
+        raw_output = self._pid_compute_output(error, derivative, ff_term)
 
         min_surplus_for_charging = self.config.get(CONF_MIN_SURPLUS, 50)
         min_consumption_for_discharging = self.config.get(CONF_MIN_CONSUMPTION, 50)
@@ -969,6 +981,7 @@ class MarstekCoordinator:
             derivative,
             sat_pos,
             sat_neg,
+            ff_term,
         )
 
         self._pid_prev_error = error
@@ -1007,7 +1020,7 @@ class MarstekCoordinator:
         self._pid_prev_ts = None
         self._pid_control_direction = PowerDir.NEUTRAL
 
-    def _pid_compute_output(self, error: float, derivative: float) -> float:
+    def _pid_compute_output(self, error: float, derivative: float, ff_term: float) -> float:
         """Compute PID output in Watts (signed)."""
         try:
             kp = float(self._pid_kp)
@@ -1019,6 +1032,8 @@ class MarstekCoordinator:
             kd = float(DEFAULT_PID_KD)
 
         output = (kp * error) + (ki * self._pid_integral) + (kd * derivative)
+
+        output += ff_term
 
         if abs(output) < 1.0:
             return 0.0
@@ -1032,6 +1047,7 @@ class MarstekCoordinator:
         derivative: float,
         sat_pos: float,
         sat_neg: float,
+        ff_term: float = 0.0,
     ) -> float:
         try:
             kp = float(self._pid_kp)
@@ -1043,7 +1059,7 @@ class MarstekCoordinator:
             kd = float(DEFAULT_PID_KD)
 
         if ki == 0:
-            output = (kp * error) + (kd * derivative)
+            output = (kp * error) + (kd * derivative) + ff_term
             output = max(-sat_neg, min(sat_pos, output))
             return 0.0 if abs(output) < 1.0 else output
 
@@ -1052,7 +1068,7 @@ class MarstekCoordinator:
             self._pid_integral += error * dt
 
         # Compute unconstrained output with the updated integral
-        u_unsat = (kp * error) + (ki * self._pid_integral) + (kd * derivative)
+        u_unsat = (kp * error) + (ki * self._pid_integral) + (kd * derivative) + ff_term
         u_sat = max(-sat_neg, min(sat_pos, u_unsat))
 
         # Back-calculation / tracking anti-windup:
@@ -1068,7 +1084,7 @@ class MarstekCoordinator:
             elif self._pid_integral < -max_integral:
                 self._pid_integral = -max_integral
 
-        output = (kp * error) + (ki * self._pid_integral) + (kd * derivative)
+        output = (kp * error) + (ki * self._pid_integral) + (kd * derivative) + ff_term
         output = max(-sat_neg, min(sat_pos, output))
 
         if abs(output) < 1.0:

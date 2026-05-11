@@ -102,7 +102,9 @@
           "pid_enabled": "Enable PID control",
           "pid_kp": "PID Kp",
           "pid_ki": "PID Ki",
-          "pid_kd": "PID Kd"
+          "pid_kd": "PID Kd",
+          "pid_feedforward_enabled": "Enable PID feed forward",
+          "pid_feedforward_gain": "PID feed forward gain value 0-1"
         }
       }
     }
@@ -221,7 +223,9 @@
           "pid_enabled": "Enable PID control",
           "pid_kp": "PID Kp",
           "pid_ki": "PID Ki",
-          "pid_kd": "PID Kd"
+          "pid_kd": "PID Kd",
+          "pid_feedforward_enabled": "Enable PID feedforward",
+          "pid_feedforward_gain": "PID feed forward gain value 0-1"
         }
       }
     }

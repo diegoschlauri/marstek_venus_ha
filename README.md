@@ -6,13 +6,13 @@
 
 This is a custom Home Assistant integration for intelligent control of multiple separate battery storage systems. It was originally designed for Marstek Venus E systems, but it can be used with **any battery system** that can be controlled via corresponding entities in Home Assistant.
 
-The integration does not control all batteries at the same time. Instead, it enables them in power levels to maximize efficiency and optimize self-consumption. It includes dynamic battery prioritization based on state of charge (SoC) and an advanced, optional logic for interacting with a wallbox/EV charger.
+The integration optimizes energy usage by managing multiple batteries as a unified, intelligent storage pool. Instead of simply turning batteries on or off, it uses advanced control theory (PID & Feed-Forward) and dynamic staging to maximize efficiency, protect battery health, and achieve near-zero grid balance.
 
 ## Key features
 
 * **Flexible number of batteries**: Control any number of batteries (fully scalable via the UI).
 * **Dynamic Power level switching**: Uses one, two, or more batteries depending on demand or surplus. Configurable thresholds determine when to add or remove a battery from the active pool.
-* **Dynamic prioritization**: Smart prioritization. When charging, the emptiest battery is preferred; when discharging, the fullest.
+* **Smart SoC Prioritization**: Automatically rotates battery usage. When charging, the emptiest battery is prioritized to ensure even wear; when discharging, the fullest battery is used first.
 * **Explicit Entity Selection**: No strict naming conventions required. Select the exact entities for each battery directly via Home Assistant dropdown menus.
 * **Grid power smoothing**: Prevents rapid switching by averaging grid power over a configurable time window.
 * **Optional wallbox integration**: Smart pausing of battery charging during high PV surplus. Charging resumes when the car is full or charging at maximum power to avoid wasting energy.
@@ -20,8 +20,10 @@ The integration does not control all batteries at the same time. Instead, it ena
 * **Minimum charge/discharge power**: Configurable thresholds that define from which surplus/consumption the batteries start charging/discharging to improve efficiency.
 * **Easy configuration**: Fully configurable via the Home Assistant UI config flow.
 * **PID control**: Optional PID control for precise power regulation.
+* **Feed-Forward Control**: Pre-emptively reacts to household load changes before the grid sensor even registers a significant error, leading to much faster response times.
 * **Service call caching**: Prevents sending the same Home Assistant service call (same entity + same value) too frequently. 
 * **Event-driven control loop**: The coordinator runs on relevant sensor updates (instead of a fixed polling loop) and is throttled by a configurable minimum interval.
+* **Grid Export Prevention**: Proactively limits battery discharge if the system detects that it would result in exporting battery energy to the grid.
 * **PV-based charge limiting (optional)**: An optional PV power sensor can be configured to cap commanded charging power to current PV production to avoid charging from the grid due to short sensor glitches.
 
 ---
@@ -129,28 +131,32 @@ During distribution, the coordinator computes a per-battery cap from these value
 
 ## PID control (what it is and how the parameters work)
 
-PID control is a feedback control method. In this integration, it is used to continuously adjust the battery charge/discharge power so that the measured *real grid power* approaches a target value of `0W`.
+The PID (Proportional-Integral-Derivative) controller is the "brain" of the regulation. It continuously calculates the difference between your current grid power and the target (0W) and adjusts the battery output accordingly.
 
 * When you have **PV surplus** (grid export), the controller will increase charging power.
 * When you have **grid import**, the controller will increase discharging power.
 
-The three gains influence how the controller reacts:
+### Advanced Mechanisms:
+*   **Anti-Windup Logic**: The controller is aware of physical limits (like max battery power or current PV production). If a limit is reached, the "Integral" part stops accumulating to prevent massive overshooting when the situation changes (e.g., when a cloud passes).
+*   **Feed-Forward (Disturbance Rejection)**: This feature allows the system to "anticipate" the needed power. By looking at the raw house load, the controller can instantly adjust the battery output by a percentage of the load change (controlled by the `Gain` value), leaving the PID to only clean up the remaining small error.
 
-1. **P (Kp)** reacts to the current error.
-2. **I (Ki)** reacts to the accumulated error over time (removes steady-state offset).
-3. **D (Kd)** reacts to the rate of change of the error (damping).
-
-Practical tuning guidance:
+### Practical tuning guidance:
 * Start with `Kd = 0`.
-* Increase `Kp` until the response is fast but not oscillating.
-* Add a small `Ki` to reduce residual import/export.
-* If you see oscillations, reduce `Kp` and/or `Ki`.
+* Set `Feed-Forward Gain` to approx `0.8`. This covers 80% of any load jump immediately.
+* Increase `Kp` (e.g., `0.2` to `0.5`) until the response is fast but not oscillating.
+* Add a small `Ki` (e.g., `0.01` to `0.05`) to remove the remaining permanent offset from 0W.
+
+---
+
+## Grid Export Prevention
+To ensure you never "waste" battery energy by sending it back to the public grid, the integration includes a safety guard. It monitors the raw grid data and caps the discharge power if it would push the grid balance into negative (export) territory. This is especially useful during rapid load drops (e.g., when a stove turns off).
+
 
 ## How it works (in detail)
 
 ### Priority calculation
-* **When discharging (grid import)**: The battery with the **highest** SoC has the highest priority.
-* **When charging (grid export)**: The battery with the **lowest** SoC has the highest priority.
+* **Discharging**: The battery with the **highest** SoC is used first. This ensures that the system always tries to utilize the most "full" energy source.
+* **Charging**: The battery with the **lowest** SoC is charged first. This levels the SoC across all batteries over time.
 * A battery is removed from the priority list when it reaches its upper/lower SoC limit.
 
 ### Power Stage Control (Hysteresis)

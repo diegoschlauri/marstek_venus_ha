@@ -102,7 +102,9 @@
           "pid_enabled": "PID-Regelung aktivieren",
           "pid_kp": "PID Kp",
           "pid_ki": "PID Ki",
-          "pid_kd": "PID Kd"
+          "pid_kd": "PID Kd",
+          "pid_feedforward_enabled": "PID Feed-Forward aktivieren",
+          "pid_feedforward_gain": "PID Feed-Forward Gain Wert 0-1"
         }
       }
     }
@@ -221,7 +223,9 @@
           "pid_enabled": "PID-Regelung aktivieren",
           "pid_kp": "PID Kp",
           "pid_ki": "PID Ki",
-          "pid_kd": "PID Kd"
+          "pid_kd": "PID Kd",
+          "pid_feedforward_enabled": "PID Feed-Forward aktivieren",
+          "pid_feedforward_gain": "PID Feed-Forward Gain Wert 0-1"
         }
       }
     }
