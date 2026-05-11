@@ -150,6 +150,7 @@ class MarstekCoordinator:
         self._pid_suspended = False
         self._pid_suspend_direction: PowerDir = PowerDir.NEUTRAL
         self._pid_control_direction: PowerDir = PowerDir.NEUTRAL
+        self._last_pid_ff_value = 0.0
 
         self._is_running = False
         self._unsub_listeners: list[Any] = []
@@ -920,7 +921,15 @@ class MarstekCoordinator:
         # negative real_power (surplus) -> positive ff_term (charge)
         ff_term = 0.0
         if self._pid_feedforward_enabled:
-            ff_term = -(float(self._pid_feedforward_gain) * real_power)
+            # unfiltered target ff
+            target_ff = -(float(self._pid_feedforward_gain) * real_power)
+            # filter the ff_term for better startup
+            alpha = 0.3
+            ff_term = (alpha * target_ff) + ((1.0 - alpha) * self._last_pid_ff_value)
+            # save last_pid_ff_value
+            self._last_pid_ff_value = ff_term
+        else:
+            self._last_pid_ff_value = 0.0
 
         # Calculate raw PID output to determine control direction and battery priority before applying anti-windup and saturation.
         raw_output = self._pid_compute_output(error, derivative, ff_term)
@@ -1019,6 +1028,7 @@ class MarstekCoordinator:
         self._pid_prev_error = None
         self._pid_prev_ts = None
         self._pid_control_direction = PowerDir.NEUTRAL
+        self._last_pid_ff_value = 0.0
 
     def _pid_compute_output(self, error: float, derivative: float, ff_term: float) -> float:
         """Compute PID output in Watts (signed)."""
