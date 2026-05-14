@@ -70,10 +70,14 @@ from .const import (
     CONF_PID_KP,
     CONF_PID_KI,
     CONF_PID_KD,
+    CONF_PID_FEEDFORWARD_ENABLED,
+    CONF_PID_FEEDFORWARD_GAIN,
     DEFAULT_PID_ENABLED,
     DEFAULT_PID_KP,
     DEFAULT_PID_KI,
     DEFAULT_PID_KD,
+    DEFAULT_PID_FEEDFORWARD_ENABLED,
+    DEFAULT_PID_FEEDFORWARD_GAIN,
     DEFAULT_CHARGE_POWER_LEVEL_1,
     DEFAULT_CHARGE_POWER_LEVEL_2,
     DEFAULT_CHARGE_POWER_LEVEL_3,
@@ -138,13 +142,15 @@ class MarstekCoordinator:
         self._pid_kp = self.config.get(CONF_PID_KP, DEFAULT_PID_KP)
         self._pid_ki = self.config.get(CONF_PID_KI, DEFAULT_PID_KI)
         self._pid_kd = self.config.get(CONF_PID_KD, DEFAULT_PID_KD)
-
+        self._pid_feedforward_enabled = self.config.get(CONF_PID_FEEDFORWARD_ENABLED, DEFAULT_PID_FEEDFORWARD_ENABLED)
+        self._pid_feedforward_gain = self.config.get(CONF_PID_FEEDFORWARD_GAIN, DEFAULT_PID_FEEDFORWARD_GAIN)
         self._pid_integral = 0.0
         self._pid_prev_error: float | None = None
         self._pid_prev_ts: datetime | None = None
         self._pid_suspended = False
         self._pid_suspend_direction: PowerDir = PowerDir.NEUTRAL
         self._pid_control_direction: PowerDir = PowerDir.NEUTRAL
+        self._last_pid_ff_value = 0.0
 
         self._is_running = False
         self._unsub_listeners: list[Any] = []
@@ -910,8 +916,23 @@ class MarstekCoordinator:
         if dt > 0 and self._pid_prev_error is not None:
             derivative = (error - self._pid_prev_error) / dt
 
+        # Calculate feed-forward term: 
+        # positive real_power (import) -> negative ff_term (discharge)
+        # negative real_power (surplus) -> positive ff_term (charge)
+        ff_term = 0.0
+        if self._pid_feedforward_enabled:
+            # unfiltered target ff
+            target_ff = -(float(self._pid_feedforward_gain) * real_power)
+            # filter the ff_term for better startup
+            alpha = 0.3
+            ff_term = (alpha * target_ff) + ((1.0 - alpha) * self._last_pid_ff_value)
+            # save last_pid_ff_value
+            self._last_pid_ff_value = ff_term
+        else:
+            self._last_pid_ff_value = 0.0
+
         # Calculate raw PID output to determine control direction and battery priority before applying anti-windup and saturation.
-        raw_output = self._pid_compute_output(error, derivative)
+        raw_output = self._pid_compute_output(error, derivative, ff_term)
 
         min_surplus_for_charging = self.config.get(CONF_MIN_SURPLUS, 50)
         min_consumption_for_discharging = self.config.get(CONF_MIN_CONSUMPTION, 50)
@@ -969,6 +990,7 @@ class MarstekCoordinator:
             derivative,
             sat_pos,
             sat_neg,
+            ff_term,
         )
 
         self._pid_prev_error = error
@@ -1006,8 +1028,9 @@ class MarstekCoordinator:
         self._pid_prev_error = None
         self._pid_prev_ts = None
         self._pid_control_direction = PowerDir.NEUTRAL
+        self._last_pid_ff_value = 0.0
 
-    def _pid_compute_output(self, error: float, derivative: float) -> float:
+    def _pid_compute_output(self, error: float, derivative: float, ff_term: float) -> float:
         """Compute PID output in Watts (signed)."""
         try:
             kp = float(self._pid_kp)
@@ -1019,6 +1042,8 @@ class MarstekCoordinator:
             kd = float(DEFAULT_PID_KD)
 
         output = (kp * error) + (ki * self._pid_integral) + (kd * derivative)
+
+        output += ff_term
 
         if abs(output) < 1.0:
             return 0.0
@@ -1032,6 +1057,7 @@ class MarstekCoordinator:
         derivative: float,
         sat_pos: float,
         sat_neg: float,
+        ff_term: float = 0.0,
     ) -> float:
         try:
             kp = float(self._pid_kp)
@@ -1043,7 +1069,7 @@ class MarstekCoordinator:
             kd = float(DEFAULT_PID_KD)
 
         if ki == 0:
-            output = (kp * error) + (kd * derivative)
+            output = (kp * error) + (kd * derivative) + ff_term
             output = max(-sat_neg, min(sat_pos, output))
             return 0.0 if abs(output) < 1.0 else output
 
@@ -1052,7 +1078,7 @@ class MarstekCoordinator:
             self._pid_integral += error * dt
 
         # Compute unconstrained output with the updated integral
-        u_unsat = (kp * error) + (ki * self._pid_integral) + (kd * derivative)
+        u_unsat = (kp * error) + (ki * self._pid_integral) + (kd * derivative) + ff_term
         u_sat = max(-sat_neg, min(sat_pos, u_unsat))
 
         # Back-calculation / tracking anti-windup:
@@ -1068,7 +1094,7 @@ class MarstekCoordinator:
             elif self._pid_integral < -max_integral:
                 self._pid_integral = -max_integral
 
-        output = (kp * error) + (ki * self._pid_integral) + (kd * derivative)
+        output = (kp * error) + (ki * self._pid_integral) + (kd * derivative) + ff_term
         output = max(-sat_neg, min(sat_pos, output))
 
         if abs(output) < 1.0:
@@ -1641,8 +1667,6 @@ class MarstekCoordinator:
             min_surplus, min_cons, max_cycles = 50.0, 50.0, 10
 
         if self._last_power_direction == PowerDir.CHARGE:
-            self._below_min_discharge_count = 0  # Reset counter for the other direction
-            self._discharge_suspended = False    # Reset suspension state for the other direction
             if abs_power < min_surplus:
                 self._below_min_charge_count += 1
             else:
@@ -1662,8 +1686,6 @@ class MarstekCoordinator:
             is_suspended = self._charge_suspended
             
         else: # DISCHARGE
-            self._below_min_charge_count = 0  # Reset counter for the other direction
-            self._charge_suspended = False    # Reset suspension state for the other direction
             if abs_power < min_cons:
                 self._below_min_discharge_count += 1
             else:

@@ -34,6 +34,8 @@ from .const import (
     CONF_PID_KP,
     CONF_PID_KI,
     CONF_PID_KD,
+    CONF_PID_FEEDFORWARD_ENABLED,
+    CONF_PID_FEEDFORWARD_GAIN,
     DEFAULT_CT_MODE,
     DEFAULT_SMOOTHING_SECONDS,
     DEFAULT_MIN_SURPLUS,
@@ -58,6 +60,8 @@ from .const import (
     DEFAULT_PID_KP,
     DEFAULT_PID_KI,
     DEFAULT_PID_KD,
+    DEFAULT_PID_FEEDFORWARD_ENABLED,
+    DEFAULT_PID_FEEDFORWARD_GAIN,
     CONF_CHARGE_POWER_LEVEL_1,
     CONF_CHARGE_POWER_LEVEL_2,
     CONF_CHARGE_POWER_LEVEL_3,
@@ -217,6 +221,8 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_PID_KP, default=DEFAULT_PID_KP): vol.Coerce(float),
                 vol.Required(CONF_PID_KI, default=DEFAULT_PID_KI): vol.Coerce(float),
                 vol.Required(CONF_PID_KD, default=DEFAULT_PID_KD): vol.Coerce(float),
+                vol.Required(CONF_PID_FEEDFORWARD_ENABLED, default=DEFAULT_PID_FEEDFORWARD_ENABLED): bool,
+                vol.Required(CONF_PID_FEEDFORWARD_GAIN, default=DEFAULT_PID_FEEDFORWARD_GAIN): vol.Coerce(float),
             }
         )
         return self.async_show_form(step_id="pid", data_schema=data_schema, errors=errors)
@@ -418,7 +424,7 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_WALLBOX_STABILITY_MIN_POWER_GAP,
                     default=self._options.get(CONF_WALLBOX_STABILITY_MIN_POWER_GAP, self.config_entry.data.get(CONF_WALLBOX_STABILITY_MIN_POWER_GAP, DEFAULT_WALLBOX_STABILITY_MIN_POWER_GAP)),
                 ): int,
-                 vol.Optional(
+                vol.Optional(
                     CONF_WALLBOX_STABILITY_MIN_GAP_DURATION_SECONDS,
                     default=self._options.get(CONF_WALLBOX_STABILITY_MIN_GAP_DURATION_SECONDS, self.config_entry.data.get(CONF_WALLBOX_STABILITY_MIN_GAP_DURATION_SECONDS, DEFAULT_WALLBOX_STABILITY_MIN_GAP_DURATION_SECONDS)),
                 ): int,
@@ -461,6 +467,14 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Required(
                     CONF_PID_KD,
                     default=self._options.get(CONF_PID_KD, self.config_entry.data.get(CONF_PID_KD, DEFAULT_PID_KD)),
+                ): vol.Coerce(float),
+                vol.Required(
+                    CONF_PID_FEEDFORWARD_ENABLED,
+                    default=self._options.get(CONF_PID_FEEDFORWARD_ENABLED, self.config_entry.data.get(CONF_PID_FEEDFORWARD_ENABLED, DEFAULT_PID_FEEDFORWARD_ENABLED)),
+                ): bool,
+                vol.Required(
+                    CONF_PID_FEEDFORWARD_GAIN,
+                    default=self._options.get(CONF_PID_FEEDFORWARD_GAIN, self.config_entry.data.get(CONF_PID_FEEDFORWARD_GAIN, DEFAULT_PID_FEEDFORWARD_GAIN)),
                 ): vol.Coerce(float),
             }
         )
