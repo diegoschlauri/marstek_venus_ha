@@ -1449,12 +1449,28 @@ class MarstekCoordinator:
         else:
             # no direction change, reset the timer
             self._power_direction_change_start = None
+
+        # check for allowance switches
+        force_battery_prio_update = False
+        # update priority list without delay if switch is turned off and list is not empty
+        if self._allow_discharging is False and self._last_power_direction == PowerDir.DISCHARGE and self._battery_priority:
+            force_battery_prio_update = True
+        if self._allow_charging is False and self._last_power_direction == PowerDir.CHARGE and self._battery_priority:
+            force_battery_prio_update = True
+
+        # check if the prio list should be filled
+        missing_prio_list = (
+            not self._battery_priority 
+            and not (self._last_power_direction == PowerDir.CHARGE and self._allow_charging is False)
+            and not (self._last_power_direction == PowerDir.DISCHARGE and self._allow_discharging is False)
+        )
     
         # check the conditions for prio list change
         if not (
             time_since_last_update >= priority_interval
             or direction_change_sustained
-            or not self._battery_priority
+            or missing_prio_list
+            or force_battery_prio_update
         ):
             return
     
