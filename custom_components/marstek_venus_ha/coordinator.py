@@ -2042,8 +2042,8 @@ class MarstekCoordinator:
                     "select_option",
                     force_mode,
                     "option",
-                    "stop",
-                    {"entity_id": force_mode, "option": "stop"},
+                    "standby",
+                    {"entity_id": force_mode, "option": "standby"},
                     blocking=True,
                 )
 
