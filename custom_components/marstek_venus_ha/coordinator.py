@@ -210,6 +210,17 @@ class MarstekCoordinator:
             
             # Wenn sie existiert, füge das komplette Batterie-Set hinzu
             if ac_power_ent:
+                # Read optional per-battery overrides (custom max powers and enabled flag)
+                custom_max = bool(self.config.get(f"battery_{i}_custom_max_powers", False))
+                try:
+                    batt_max_dis = int(self.config.get(f"battery_{i}_max_discharge_power", DEFAULT_MAX_DISCHARGE_POWER))
+                except (TypeError, ValueError):
+                    batt_max_dis = int(DEFAULT_MAX_DISCHARGE_POWER)
+                try:
+                    batt_max_ch = int(self.config.get(f"battery_{i}_max_charge_power", DEFAULT_MAX_CHARGE_POWER))
+                except (TypeError, ValueError):
+                    batt_max_ch = int(DEFAULT_MAX_CHARGE_POWER)
+
                 self._batteries.append({
                     "id": f"battery_{i}",  # Eine interne ID, nur fürs Logging und die Prio-Liste
                     "ac_power": ac_power_ent,
@@ -218,6 +229,9 @@ class MarstekCoordinator:
                     "discharge_power": self.config.get(f"battery_{i}_discharge_power_entity"),
                     "force_mode": self.config.get(f"battery_{i}_force_mode_entity"),
                     "rs485_mode": self.config.get(f"battery_{i}_rs485_mode_entity"),
+                    "custom_max_powers": custom_max,
+                    "max_discharge_power": batt_max_dis,
+                    "max_charge_power": batt_max_ch
                 })
     
     async def async_load_settings(self) -> None:
@@ -1636,6 +1650,13 @@ class MarstekCoordinator:
                     cap = charge_levels[4]
                 else:
                     cap = int(max_charge_power)
+                # If the battery provides custom max powers, respect its per-battery cap
+                if batt.get("custom_max_powers"):
+                    try:
+                        per_batt_max = int(batt.get("max_charge_power", max_charge_power))
+                    except (TypeError, ValueError):
+                        per_batt_max = int(max_charge_power)
+                    cap = min(cap, per_batt_max)
                 return min(cap, int(max_charge_power))
             else:
                 if soc <= 13:
@@ -1650,6 +1671,13 @@ class MarstekCoordinator:
                     cap = discharge_levels[4]
                 else:
                     cap = int(max_discharge_power)
+                # Respect per-battery discharge cap if configured
+                if batt.get("custom_max_powers"):
+                    try:
+                        per_batt_max = int(batt.get("max_discharge_power", max_discharge_power))
+                    except (TypeError, ValueError):
+                        per_batt_max = int(max_discharge_power)
+                    cap = min(cap, per_batt_max)
                 return min(cap, int(max_discharge_power))
 
         # Try increasing the number of batteries if needed to meet the requested power
@@ -1887,10 +1915,17 @@ class MarstekCoordinator:
         per_batt_cap: dict[str, int] = {}
         for b_id in active_battery_ids:
             batt = next((b for b in self._batteries if b["id"] == b_id), None)
+            # If battery explicitly disabled, cap is 0
+            if not batt:
+                per_batt_cap[b_id] = 0
+                continue
             soc = self._get_float_state(batt["soc"]) if batt else None
             if soc is None:
-                # If SoC unknown, allow full configured max
-                cap = int(max_charge_power) if self._last_power_direction == PowerDir.CHARGE else int(max_discharge_power)
+                # If SoC unknown, allow full configured max or per-battery max if set
+                if batt.get("custom_max_powers"):
+                    cap = int(batt.get("max_charge_power")) if self._last_power_direction == PowerDir.CHARGE else int(batt.get("max_discharge_power"))
+                else:
+                    cap = int(max_charge_power) if self._last_power_direction == PowerDir.CHARGE else int(max_discharge_power)
             else:
                 if self._last_power_direction == PowerDir.CHARGE:
                     if soc >= 98:
@@ -1905,6 +1940,13 @@ class MarstekCoordinator:
                         cap = charge_levels[4]
                     else:
                         cap = int(max_charge_power)
+                    # Cap to per-battery max if configured
+                    if batt.get("custom_max_powers"):
+                        try:
+                            per_max = int(batt.get("max_charge_power", max_charge_power))
+                        except (TypeError, ValueError):
+                            per_max = int(max_charge_power)
+                        cap = min(cap, per_max)
                     cap = min(cap, int(max_charge_power))
                 else:
                     # Discharge
@@ -1920,6 +1962,13 @@ class MarstekCoordinator:
                         cap = discharge_levels[4]
                     else:
                         cap = int(max_discharge_power)
+                    # Cap to per-battery max if configured
+                    if batt.get("custom_max_powers"):
+                        try:
+                            per_max = int(batt.get("max_discharge_power", max_discharge_power))
+                        except (TypeError, ValueError):
+                            per_max = int(max_discharge_power)
+                        cap = min(cap, per_max)
                     cap = min(cap, int(max_discharge_power))
             per_batt_cap[b_id] = max(0, int(cap))
 

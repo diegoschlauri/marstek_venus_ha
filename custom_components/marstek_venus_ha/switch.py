@@ -71,6 +71,13 @@ class ControlSwitch(SwitchEntity):
         if not self._data._control_enabled:
             _LOGGER.info("Battery control has been enabled.")
             self._data._control_enabled = True
+            # Reset PID state to avoid leftover integral/derivative states
+            # from previous runs causing incorrect control on re-enable.
+            try:
+                self._data._reset_pid_state()
+            except Exception:
+                # Best-effort: ignore if method not present for backward compatibility
+                pass
             await self._data.async_save_settings()
             self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
             self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation
@@ -84,6 +91,11 @@ class ControlSwitch(SwitchEntity):
         """Turn the switch off."""
         if self._data._control_enabled:
             self._data._control_enabled = False
+            # Reset PID state when disabling control to avoid windup
+            try:
+                self._data._reset_pid_state()
+            except Exception:
+                pass
             await self._data.async_save_settings()
             self._data._battery_priority = []  # Clear battery priority to force recalculation on next update
             self._data._last_power_direction = PowerDir.NEUTRAL  # Reset power direction to force recalculation

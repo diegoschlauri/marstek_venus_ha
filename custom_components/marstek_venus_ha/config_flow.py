@@ -141,7 +141,9 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             schema_dict[vol.Required(f"battery_{i}_discharge_power_entity")] = selector.EntitySelector(selector.EntitySelectorConfig(domain="number"))
             schema_dict[vol.Required(f"battery_{i}_force_mode_entity")] = selector.EntitySelector(selector.EntitySelectorConfig(domain="select"))
             schema_dict[vol.Required(f"battery_{i}_rs485_mode_entity")] = selector.EntitySelector(selector.EntitySelectorConfig(domain="switch"))
-
+            schema_dict[vol.Required(f"battery_{i}_custom_max_powers", default=False)] = bool
+            schema_dict[vol.Required(f"battery_{i}_max_discharge_power", default=2500)] = int
+            schema_dict[vol.Required(f"battery_{i}_max_charge_power", default=2500)] = int
         # Generate powerstages based on battery number
         if battery_count > 1:
             schema_dict[vol.Required(CONF_POWER_STAGE_OFFSET, default=DEFAULT_POWER_STAGE_OFFSET)] = int
@@ -347,6 +349,21 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                 f"battery_{i}_rs485_mode_entity",
                 default=self._options.get(f"battery_{i}_rs485_mode_entity", self.config_entry.data.get(f"battery_{i}_rs485_mode_entity", ""))
             )] = selector.EntitySelector(selector.EntitySelectorConfig(domain="switch"))
+
+            schema_dict[vol.Required(
+                f"battery_{i}_custom_max_powers",
+                default=self._options.get(f"battery_{i}_custom_max_powers", False)
+            )] = bool
+
+            schema_dict[vol.Required(
+                f"battery_{i}_max_discharge_power",
+                default=self._options.get(f"battery_{i}_max_discharge_power", self.config_entry.data.get(f"battery_{i}_max_discharge_power", 2500))
+            )] = int
+
+            schema_dict[vol.Required(
+                f"battery_{i}_max_charge_power",
+                default=self._options.get(f"battery_{i}_max_charge_power", self.config_entry.data.get(f"battery_{i}_max_charge_power", 2500))
+            )] = int 
 
         # 2. Dynamische Powerstages (nur wenn mehr als 1 Batterie)
         if battery_count > 1:

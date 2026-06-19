@@ -25,6 +25,8 @@ The integration optimizes energy usage by managing multiple batteries as a unifi
 * **Event-driven control loop**: The coordinator runs on relevant sensor updates (instead of a fixed polling loop) and is throttled by a configurable minimum interval.
 * **Grid Export Prevention**: Proactively limits battery discharge if the system detects that it would result in exporting battery energy to the grid.
 * **PV-based charge limiting (optional)**: An optional PV power sensor can be configured to cap commanded charging power to current PV production to avoid charging from the grid due to short sensor glitches.
+* **Max charge and discharge power per battery**: Set the max charge and discharge rate per battery.
+
 
 ---
 
@@ -45,6 +47,7 @@ This integration does not control the batteries directly via a vendor-specific A
 4. Control the **discharge power value** (e.g., `number.marstek_l1_modbus_set_forcible_discharge_power`).
 5. Set the **Force Mode** to control current direction (e.g., `select.marstek_l1_modbus_force_mode`).
 6. Toggle the **RS485 Control Mode** (e.g., `switch.marstek_l1_modbus_rs485_control_mode`).
+7. Max charge and discharge power: If your batteries need different max discharge and charge rates. You can define those per battery.
 
 During configuration, you will first choose **how many batteries** you want to control. In the next step, the UI will present you with dropdown menus to **explicitly select these 6 entities for every single battery**. Because you select them manually, there is no strict naming convention you need to follow.
 
