@@ -129,6 +129,10 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         battery_count = self._data.get(CONF_BATTERY_COUNT, 1)
         
         if user_input is not None:
+            for i in range(1, battery_count + 1):
+                field_name = f"battery_{i}_max_soc_entity"
+                if field_name not in user_input or user_input.get(field_name) in ("", None):
+                    user_input[field_name] = None
             self._data.update(user_input)
             return await self.async_step_wallbox()
         
@@ -314,7 +318,7 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             for i in range(1, battery_count + 1):
                 field_name = f"battery_{i}_max_soc_entity"
-                if field_name not in user_input:
+                if field_name not in user_input or user_input.get(field_name) in ("", None):
                     user_input[field_name] = None
             self._options.update(user_input)
             if self._all_mode:
