@@ -333,7 +333,10 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
         
             schema_dict[vol.Optional(
                 f"battery_{i}_max_soc_entity",
-                default=self._options.get(f"battery_{i}_max_soc_entity", self.config_entry.data.get(f"battery_{i}_max_soc_entity", ""))
+                default=self._options.get(
+                    f"battery_{i}_max_soc_entity",
+                    self.config_entry.data.get(f"battery_{i}_max_soc_entity", None),
+                ),
             )] = selector.EntitySelector(selector.EntitySelectorConfig(domain="number"))
 
             schema_dict[vol.Required(
