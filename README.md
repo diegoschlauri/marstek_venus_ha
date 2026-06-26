@@ -48,8 +48,9 @@ This integration does not control the batteries directly via a vendor-specific A
 5. Set the **Force Mode** to control current direction (e.g., `select.marstek_l1_modbus_force_mode`).
 6. Toggle the **RS485 Control Mode** (e.g., `switch.marstek_l1_modbus_rs485_control_mode`).
 7. Max charge and discharge power: If your batteries need different max discharge and charge rates. You can define those per battery.
+8. You can define the max **State of Charge** for the whole integration or optional select the **Max SoC Entity** per battery(e.g., `sensor.marstek_l1_battery_max_soc`).
 
-During configuration, you will first choose **how many batteries** you want to control. In the next step, the UI will present you with dropdown menus to **explicitly select these 6 entities for every single battery**. Because you select them manually, there is no strict naming convention you need to follow.
+During configuration, you will first choose **how many batteries** you want to control. In the next step, the UI will present you with dropdown menus to **explicitly select these 6 entities for every single battery**. You have to select them manually. That way, there is no strict naming convention you need to follow.
 
 As a basis for integrating a Marstek energy storage system, the Modbus integration from https://github.com/ViperRNMC/marstek_venus_modbus was used. Depending on the use case it may be useful to reduce the scan intervals in the Modbus integration settings.
 
