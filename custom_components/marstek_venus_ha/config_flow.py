@@ -318,7 +318,7 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             for i in range(1, battery_count + 1):
                 field_name = f"battery_{i}_max_soc_entity"
-                if field_name not in user_input or not user_input.get(field_name):
+                if field_name not in user_input or user_input.get(field_name) in ("", None):
                     user_input[field_name] = None
                     self._options[field_name] = None
             self._options.update(user_input)
@@ -339,13 +339,15 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                 f"battery_{i}_soc_entity",
                 default=self._options.get(f"battery_{i}_soc_entity", self.config_entry.data.get(f"battery_{i}_soc_entity", ""))
             )] = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
-        
+
+            current_val = self._options.get(
+                f"battery_{i}_max_soc_entity",
+                self.config_entry.data.get(f"battery_{i}_max_soc_entity")
+            )
+
             schema_dict[vol.Optional(
                 f"battery_{i}_max_soc_entity",
-                default=self._options.get(
-                    f"battery_{i}_max_soc_entity",
-                    self.config_entry.data.get(f"battery_{i}_max_soc_entity", None),
-                ),
+                description={"suggested_value": current_val} if current_val else {}
             )] = selector.EntitySelector(selector.EntitySelectorConfig(domain="number"))
 
             schema_dict[vol.Required(
