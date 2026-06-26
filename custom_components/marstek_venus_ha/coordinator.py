@@ -225,6 +225,7 @@ class MarstekCoordinator:
                     "id": f"battery_{i}",  # Eine interne ID, nur fürs Logging und die Prio-Liste
                     "ac_power": ac_power_ent,
                     "soc": self.config.get(f"battery_{i}_soc_entity"),
+                    "max_soc_entity": self.config.get(f"battery_{i}_max_soc_entity"),
                     "charge_power": self.config.get(f"battery_{i}_charge_power_entity"),
                     "discharge_power": self.config.get(f"battery_{i}_discharge_power_entity"),
                     "force_mode": self.config.get(f"battery_{i}_force_mode_entity"),
@@ -1127,6 +1128,13 @@ class MarstekCoordinator:
             _LOGGER.warning(f"Could not parse state of '{entity_id}' as float: '{state.state}'")
             return None
 
+    def _get_battery_max_soc(self, batt: dict[str, Any]) -> float | None:
+        """Get the battery-specific max SoC from its configured entity, if set."""
+        entity_id = batt.get("max_soc_entity")
+        if not isinstance(entity_id, str) or not entity_id:
+            return None
+        return self._get_float_state(entity_id)
+
     def _get_smoothed_grid_power(self) -> float | None:
         """Get the current power from the grid sensor and calculate the smoothed average."""
         grid_sensor_id = self.config.get(CONF_GRID_POWER_SENSOR)
@@ -1529,8 +1537,11 @@ class MarstekCoordinator:
 
             batt_copy = dict(batt)
             batt_copy["current_soc"] = soc
+            batt_max_soc = self._get_battery_max_soc(batt_copy)
+            if batt_max_soc is None:
+                batt_max_soc = max_soc
 
-            if self._last_power_direction == PowerDir.CHARGE and soc <= max_soc:
+            if self._last_power_direction == PowerDir.CHARGE and soc <= batt_max_soc:
                 available_batteries.append(batt_copy)
             elif self._last_power_direction == PowerDir.DISCHARGE and soc >= min_soc:
                 available_batteries.append(batt_copy)
@@ -1848,12 +1859,15 @@ class MarstekCoordinator:
                     soc = self._get_float_state(b["soc"])
                     if soc is None:
                         continue
-                    if self._last_power_direction == PowerDir.CHARGE and soc >= max_soc:
+                    batt_max_soc = self._get_battery_max_soc(b)
+                    if batt_max_soc is None:
+                        batt_max_soc = max_soc
+                    if self._last_power_direction == PowerDir.CHARGE and soc >= batt_max_soc:
                         _LOGGER.debug(
                             "Excluding battery %s from CHARGE: soc=%s >= max_soc=%s",
                             b["id"],
                             soc,
-                            max_soc,
+                            batt_max_soc,
                         )
                         excluded_due_to_soc = True
                         continue

@@ -137,6 +137,7 @@ class MarstekConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         for i in range(1, battery_count + 1):
             schema_dict[vol.Required(f"battery_{i}_ac_power_entity")] = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
             schema_dict[vol.Required(f"battery_{i}_soc_entity")] = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
+            schema_dict[vol.Optional(f"battery_{i}_max_soc_entity")] = selector.EntitySelector(selector.EntitySelectorConfig(domain="number"))
             schema_dict[vol.Required(f"battery_{i}_charge_power_entity")] = selector.EntitySelector(selector.EntitySelectorConfig(domain="number"))
             schema_dict[vol.Required(f"battery_{i}_discharge_power_entity")] = selector.EntitySelector(selector.EntitySelectorConfig(domain="number"))
             schema_dict[vol.Required(f"battery_{i}_force_mode_entity")] = selector.EntitySelector(selector.EntitySelectorConfig(domain="select"))
@@ -329,7 +330,12 @@ class MarstekOptionsFlowHandler(config_entries.OptionsFlow):
                 f"battery_{i}_soc_entity",
                 default=self._options.get(f"battery_{i}_soc_entity", self.config_entry.data.get(f"battery_{i}_soc_entity", ""))
             )] = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
-            
+        
+            schema_dict[vol.Optional(
+                f"battery_{i}_max_soc_entity",
+                default=self._options.get(f"battery_{i}_max_soc_entity", self.config_entry.data.get(f"battery_{i}_max_soc_entity", ""))
+            )] = selector.EntitySelector(selector.EntitySelectorConfig(domain="number"))
+
             schema_dict[vol.Required(
                 f"battery_{i}_charge_power_entity",
                 default=self._options.get(f"battery_{i}_charge_power_entity", self.config_entry.data.get(f"battery_{i}_charge_power_entity", ""))
