@@ -14,6 +14,10 @@ def _install_homeassistant_stubs() -> None:
     config_entries = types.ModuleType("homeassistant.config_entries")
     helpers = types.ModuleType("homeassistant.helpers")
     helpers_event = types.ModuleType("homeassistant.helpers.event")
+    helpers_dispatcher = types.ModuleType("homeassistant.helpers.dispatcher")
+    helpers_storage = types.ModuleType("homeassistant.helpers.storage")
+    util = types.ModuleType("homeassistant.util")
+    util_dt = types.ModuleType("homeassistant.util.dt")
     ha_const = types.ModuleType("homeassistant.const")
 
     class HomeAssistant:  # pragma: no cover
@@ -36,6 +40,24 @@ def _install_homeassistant_stubs() -> None:
     def async_track_state_change_event(*args, **kwargs):  # pragma: no cover
         return None
 
+    def async_dispatcher_send(*args, **kwargs):  # pragma: no cover
+        return None
+
+    class Store:  # pragma: no cover
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def async_load(self):
+            return None
+
+        async def async_save(self, data):
+            return None
+
+    def utcnow():  # pragma: no cover
+        from datetime import datetime, timezone
+
+        return datetime.now(timezone.utc)
+
     core.HomeAssistant = HomeAssistant
     core.State = State
     core.callback = callback
@@ -44,6 +66,13 @@ def _install_homeassistant_stubs() -> None:
 
     helpers.event = helpers_event
     helpers_event.async_track_state_change_event = async_track_state_change_event
+    helpers.dispatcher = helpers_dispatcher
+    helpers_dispatcher.async_dispatcher_send = async_dispatcher_send
+    helpers.storage = helpers_storage
+    helpers_storage.Store = Store
+    util.dt = util_dt
+    util_dt.utcnow = utcnow
+    util_dt.now = utcnow
 
     ha_const.STATE_UNAVAILABLE = "unavailable"
     ha_const.STATE_UNKNOWN = "unknown"
@@ -55,6 +84,10 @@ def _install_homeassistant_stubs() -> None:
     sys.modules.setdefault("homeassistant.helpers", helpers)
     sys.modules.setdefault("homeassistant.helpers.event", helpers_event)
     sys.modules.setdefault("homeassistant.const", ha_const)
+    sys.modules.setdefault("homeassistant.helpers.dispatcher", helpers_dispatcher)
+    sys.modules.setdefault("homeassistant.helpers.storage", helpers_storage)
+    sys.modules.setdefault("homeassistant.util", util)
+    sys.modules.setdefault("homeassistant.util.dt", util_dt)
 
 
 _install_homeassistant_stubs()

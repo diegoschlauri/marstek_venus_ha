@@ -92,6 +92,10 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Minimum time between two priority recalculations triggered by a change of the
+# usable battery set (SoC crossing min/max SoC). Prevents flapping around the limit.
+ELIGIBILITY_RECALC_MIN_SECONDS = 60
+
 # Versioning for your storage file
 STORAGE_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}_settings"
@@ -165,6 +169,7 @@ class MarstekCoordinator:
         self._power_history = deque(maxlen=self._get_deque_size("smoothing"))
         self._battery_priority = []
         self._last_priority_update = datetime.min
+        self._last_eligibility_recalc = datetime.min
         self._last_power_direction: PowerDir = PowerDir.NEUTRAL
         self._last_grid_power_raw: float | None = None
         self._below_min_cycles_to_zero = self.config.get(CONF_MAX_LIMIT_BREACHES_BEFORE_ZEROING, 10)
@@ -1480,6 +1485,22 @@ class MarstekCoordinator:
         if self._allow_charging is False and self._last_power_direction == PowerDir.CHARGE and self._battery_priority:
             force_battery_prio_update = True
 
+        # check if the set of usable batteries changed since the last recalculation
+        # (a battery fell below min SoC / rose above max SoC, or was recharged above
+        # min SoC by its own firmware). Without this check the change is only noticed
+        # after the full priority interval.
+        eligibility_changed = False
+        if (
+            self._battery_priority
+            and self._priority_list_power_direction == self._last_power_direction
+            and datetime.now() - self._last_eligibility_recalc
+            >= timedelta(seconds=ELIGIBILITY_RECALC_MIN_SECONDS)
+        ):
+            current_ids = {b.get("id") for b in self._battery_priority if isinstance(b, dict)}
+            if current_ids != self._get_eligible_battery_ids():
+                eligibility_changed = True
+                self._last_eligibility_recalc = datetime.now()
+
         # check if the prio list should be filled
         missing_prio_list = (
             not self._battery_priority 
@@ -1493,14 +1514,74 @@ class MarstekCoordinator:
             or direction_change_sustained
             or missing_prio_list
             or force_battery_prio_update
+            or eligibility_changed
         ):
             return
     
         # Recalculate the priority list
-        _LOGGER.info(f"Recalculating battery priority. Reason: {'Sustained power direction change' if direction_change_sustained else 'Time interval elapsed'}")
+        if direction_change_sustained:
+            reason = "Sustained power direction change"
+        elif eligibility_changed:
+            reason = "Usable battery set changed (SoC limit crossed)"
+        elif missing_prio_list:
+            reason = "Priority list empty"
+        elif force_battery_prio_update:
+            reason = "Allow switch changed"
+        else:
+            reason = "Time interval elapsed"
+        _LOGGER.info(f"Recalculating battery priority. Reason: {reason}")
         await self._calculate_battery_priority()
         self._last_priority_update = datetime.now()
         self._priority_list_power_direction = self._last_power_direction
+
+    def _get_float_state_quiet(self, entity_id: str | None) -> float | None:
+        """Get a float state without logging (used by the per-cycle eligibility check)."""
+        if not isinstance(entity_id, str) or not entity_id:
+            return None
+        state = self.hass.states.get(entity_id)
+        if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return None
+        try:
+            return float(state.state)
+        except (ValueError, TypeError):
+            return None
+
+    def _get_eligible_battery_ids(self) -> set[str]:
+        """Return the ids of all batteries usable in the current power direction.
+
+        Applies the same SoC rules as _calculate_battery_priority(). Batteries with an
+        unavailable SoC are left out, exactly as in _calculate_battery_priority().
+        """
+        if self._last_power_direction == PowerDir.NEUTRAL:
+            return set()
+        if self._allow_charging is False and self._last_power_direction == PowerDir.CHARGE:
+            return set()
+        if self._allow_discharging is False and self._last_power_direction == PowerDir.DISCHARGE:
+            return set()
+
+        try:
+            min_soc = float(self.config.get(CONF_MIN_SOC, DEFAULT_MIN_SOC) or DEFAULT_MIN_SOC)
+        except (TypeError, ValueError):
+            min_soc = float(DEFAULT_MIN_SOC)
+        try:
+            max_soc = float(self.config.get(CONF_MAX_SOC, DEFAULT_MAX_SOC) or DEFAULT_MAX_SOC)
+        except (TypeError, ValueError):
+            max_soc = float(DEFAULT_MAX_SOC)
+
+        eligible: set[str] = set()
+        for batt in self._batteries:
+            soc = self._get_float_state_quiet(batt.get("soc"))
+            if soc is None:
+                continue
+            if self._last_power_direction == PowerDir.CHARGE:
+                batt_max_soc = self._get_float_state_quiet(batt.get("max_soc_entity"))
+                if batt_max_soc is None:
+                    batt_max_soc = max_soc
+                if soc <= batt_max_soc:
+                    eligible.add(batt["id"])
+            elif self._last_power_direction == PowerDir.DISCHARGE and soc >= min_soc:
+                eligible.add(batt["id"])
+        return eligible
 
     async def _calculate_battery_priority(self):
         """Calculate the sorted list of batteries based on SoC."""
