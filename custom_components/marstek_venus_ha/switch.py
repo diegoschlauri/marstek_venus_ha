@@ -14,13 +14,127 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([
+    entities: list[SwitchEntity] = [
         ControlSwitch(entry, coordinator),
         ChargingSwitch(entry, coordinator),
         DischargingSwitch(entry, coordinator),
         WallboxPrioritySwitch(entry, coordinator),
         BlockDischargingCCSwitch(entry, coordinator)
-    ])
+    ]
+    for batt_id in coordinator.battery_ids:
+        entities.append(BatteryEnabledSwitch(entry, coordinator, batt_id))
+        entities.append(BatteryBackupReserveSwitch(entry, coordinator, batt_id))
+    async_add_entities(entities)
+
+
+def _battery_label(batt_id: str) -> str:
+    """'battery_1' -> 'Battery 1'."""
+    return batt_id.replace("_", " ").capitalize()
+
+
+class _BatteryRuntimeSwitch(SwitchEntity):
+    """Base class for per-battery runtime switches (always available, persisted in the store)."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, entry: ConfigEntry, data_object: MarstekCoordinator, batt_id: str):
+        self._entry = entry
+        self._data = data_object
+        self._batt_id = batt_id
+
+    @property
+    def available(self) -> bool:
+        # Always available so automations can change the setting at any time;
+        # it is applied as soon as the control logic is running.
+        return True
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.entry_id)},
+            name="Marstek Venus HA",
+        )
+
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_DIAGNOSTICS_UPDATED,
+                self._handle_coordinator_update,
+            )
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+    def _common_attributes(self) -> dict:
+        return {
+            "battery_id": self._batt_id,
+            "current_soc": self._data.get_battery_current_soc(self._batt_id),
+            "in_priority_list": self._batt_id in self._data.battery_priority_ids.split(),
+        }
+
+
+class BatteryEnabledSwitch(_BatteryRuntimeSwitch):
+    """Include (on) or completely exclude (off) a battery from the control logic."""
+
+    _attr_icon = "mdi:battery-sync"
+
+    def __init__(self, entry: ConfigEntry, data_object: MarstekCoordinator, batt_id: str):
+        super().__init__(entry, data_object, batt_id)
+        self._attr_name = f"{_battery_label(batt_id)} Active"
+        self._attr_unique_id = f"{entry.entry_id}_{batt_id}_enabled_switch"
+
+    @property
+    def is_on(self) -> bool:
+        return self._data.is_battery_enabled(self._batt_id)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return self._common_attributes()
+
+    async def async_turn_on(self, **kwargs):
+        await self._data.async_set_battery_enabled(self._batt_id, True)
+        self.async_write_ha_state()
+        async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
+
+    async def async_turn_off(self, **kwargs):
+        await self._data.async_set_battery_enabled(self._batt_id, False)
+        self.async_write_ha_state()
+        async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
+
+
+class BatteryBackupReserveSwitch(_BatteryRuntimeSwitch):
+    """Activate the additional backup reserve (min SoC for discharging) of a battery."""
+
+    _attr_icon = "mdi:battery-lock"
+
+    def __init__(self, entry: ConfigEntry, data_object: MarstekCoordinator, batt_id: str):
+        super().__init__(entry, data_object, batt_id)
+        self._attr_name = f"{_battery_label(batt_id)} Backup Reserve"
+        self._attr_unique_id = f"{entry.entry_id}_{batt_id}_backup_reserve_switch"
+
+    @property
+    def is_on(self) -> bool:
+        return self._data.is_battery_backup_reserve_enabled(self._batt_id)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        attrs = self._common_attributes()
+        attrs["backup_reserve_soc"] = self._data.get_battery_backup_reserve_soc(self._batt_id)
+        attrs["effective_discharge_min_soc"] = self._data.get_battery_discharge_min_soc(self._batt_id)
+        return attrs
+
+    async def async_turn_on(self, **kwargs):
+        await self._data.async_set_battery_backup_reserve_enabled(self._batt_id, True)
+        self.async_write_ha_state()
+        async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
+
+    async def async_turn_off(self, **kwargs):
+        await self._data.async_set_battery_backup_reserve_enabled(self._batt_id, False)
+        self.async_write_ha_state()
+        async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
 
 
 class ControlSwitch(SwitchEntity):

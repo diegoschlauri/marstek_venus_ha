@@ -88,6 +88,9 @@ from .const import (
     DEFAULT_DISCHARGE_POWER_LEVEL_3,
     DEFAULT_DISCHARGE_POWER_LEVEL_4,
     DEFAULT_DISCHARGE_POWER_LEVEL_5,
+    DEFAULT_BACKUP_RESERVE_SOC,
+    MIN_BACKUP_RESERVE_SOC,
+    MAX_BACKUP_RESERVE_SOC,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -239,6 +242,22 @@ class MarstekCoordinator:
                     "max_discharge_power": batt_max_dis,
                     "max_charge_power": batt_max_ch
                 })
+
+        # Per-battery runtime controls (persisted in the Store, controllable via
+        # switch/number entities and therefore via Home Assistant automations):
+        # - enabled: battery participates in the control logic at all
+        # - backup_reserve_enabled / backup_reserve_soc: additional discharge
+        #   min SoC (emergency power reserve) on top of the global min SoC
+        self._battery_enabled: dict[str, bool] = {b["id"]: True for b in self._batteries}
+        self._battery_backup_reserve_enabled: dict[str, bool] = {b["id"]: False for b in self._batteries}
+        self._battery_backup_reserve_soc: dict[str, float] = {
+            b["id"]: float(DEFAULT_BACKUP_RESERVE_SOC) for b in self._batteries
+        }
+
+        # Set when the usable battery set was changed by the user (switch/number)
+        # so the next update cycle recalculates the priority immediately.
+        self._force_priority_recalc = False
+        self._force_priority_recalc_reason = ""
     
     async def async_load_settings(self) -> None:
         """Fetch settings from the Store helper."""
@@ -250,6 +269,7 @@ class MarstekCoordinator:
             self._allow_discharging = stored_data.get("allow_discharging", True)
             self._block_discharging_while_carcharging = stored_data.get("block_discharging_while_carcharging", True)
             self._wallbox_priority = stored_data.get("wallbox_priority", True)
+            self._load_battery_settings(stored_data)
         else:
             # If no store exists yet, use your defaults
             self._control_enabled = True
@@ -257,6 +277,33 @@ class MarstekCoordinator:
             self._allow_discharging = True
             self._block_discharging_while_carcharging = True
             self._wallbox_priority = True
+
+    def _load_battery_settings(self, stored_data: dict[str, Any]) -> None:
+        """Restore the per-battery runtime controls from the store (ignores unknown ids)."""
+        enabled = stored_data.get("battery_enabled")
+        if isinstance(enabled, dict):
+            for batt_id, value in enabled.items():
+                if batt_id in self._battery_enabled:
+                    self._battery_enabled[batt_id] = bool(value)
+
+        reserve_enabled = stored_data.get("battery_backup_reserve_enabled")
+        if isinstance(reserve_enabled, dict):
+            for batt_id, value in reserve_enabled.items():
+                if batt_id in self._battery_backup_reserve_enabled:
+                    self._battery_backup_reserve_enabled[batt_id] = bool(value)
+
+        reserve_soc = stored_data.get("battery_backup_reserve_soc")
+        if isinstance(reserve_soc, dict):
+            for batt_id, value in reserve_soc.items():
+                if batt_id not in self._battery_backup_reserve_soc:
+                    continue
+                try:
+                    soc = float(value)
+                except (TypeError, ValueError):
+                    continue
+                self._battery_backup_reserve_soc[batt_id] = max(
+                    float(MIN_BACKUP_RESERVE_SOC), min(float(MAX_BACKUP_RESERVE_SOC), soc)
+                )
 
     async def async_save_settings(self) -> None:
         """Save current settings to store."""
@@ -266,8 +313,112 @@ class MarstekCoordinator:
             "allow_discharging": self._allow_discharging,
             "block_discharging_while_carcharging": self._block_discharging_while_carcharging,
             "wallbox_priority": self._wallbox_priority,
+            "battery_enabled": dict(self._battery_enabled),
+            "battery_backup_reserve_enabled": dict(self._battery_backup_reserve_enabled),
+            "battery_backup_reserve_soc": dict(self._battery_backup_reserve_soc),
             # include all other persisted flags here
         })
+
+    # ------------------------------------------------------------------
+    # Per-battery runtime controls (backup reserve / exclusion)
+    # ------------------------------------------------------------------
+    @property
+    def battery_ids(self) -> list[str]:
+        return [b["id"] for b in self._batteries]
+
+    def is_battery_enabled(self, batt_id: str) -> bool:
+        return bool(self._battery_enabled.get(batt_id, True))
+
+    def is_battery_backup_reserve_enabled(self, batt_id: str) -> bool:
+        return bool(self._battery_backup_reserve_enabled.get(batt_id, False))
+
+    def get_battery_backup_reserve_soc(self, batt_id: str) -> float:
+        return float(self._battery_backup_reserve_soc.get(batt_id, DEFAULT_BACKUP_RESERVE_SOC))
+
+    def get_battery_current_soc(self, batt_id: str) -> float | None:
+        batt = next((b for b in self._batteries if b["id"] == batt_id), None)
+        if not batt:
+            return None
+        return self._get_float_state_quiet(batt.get("soc"))
+
+    def _get_global_min_soc(self) -> float:
+        try:
+            return float(self.config.get(CONF_MIN_SOC, DEFAULT_MIN_SOC) or DEFAULT_MIN_SOC)
+        except (TypeError, ValueError):
+            return float(DEFAULT_MIN_SOC)
+
+    def get_battery_discharge_min_soc(self, batt_id: str, global_min_soc: float | None = None) -> float:
+        """Effective discharge min SoC: global min SoC, raised by the backup reserve if active."""
+        min_soc = self._get_global_min_soc() if global_min_soc is None else float(global_min_soc)
+        if self.is_battery_backup_reserve_enabled(batt_id):
+            return max(min_soc, self.get_battery_backup_reserve_soc(batt_id))
+        return min_soc
+
+    def _request_priority_recalc(self, reason: str) -> None:
+        """Force a priority recalculation in the next update cycle and trigger an update."""
+        self._force_priority_recalc = True
+        self._force_priority_recalc_reason = reason
+        self.hass.async_create_task(self.async_request_update(reason=f"battery_selection:{reason}"))
+
+    async def async_set_battery_enabled(self, batt_id: str, enabled: bool) -> None:
+        if batt_id not in self._battery_enabled or self._battery_enabled[batt_id] == enabled:
+            return
+        self._battery_enabled[batt_id] = enabled
+        await self.async_save_settings()
+        _LOGGER.info("Battery %s %s control.", batt_id, "added to" if enabled else "removed from")
+        if not enabled:
+            # Drop it from the current priority list right away so a running
+            # update cycle does not command it anymore ...
+            self._battery_priority = [
+                b for b in self._battery_priority if isinstance(b, dict) and b.get("id") != batt_id
+            ]
+            # ... and set it to 0W immediately (bypassing the service call cache).
+            batt = next((b for b in self._batteries if b["id"] == batt_id), None)
+            if batt and self._is_running and getattr(self, "_ready_to_command", False):
+                await self._set_battery_power(batt, 0, 0, force=True)
+        self._request_priority_recalc(f"{batt_id} {'enabled' if enabled else 'disabled'}")
+
+    async def async_set_battery_backup_reserve_enabled(self, batt_id: str, enabled: bool) -> None:
+        if (
+            batt_id not in self._battery_backup_reserve_enabled
+            or self._battery_backup_reserve_enabled[batt_id] == enabled
+        ):
+            return
+        self._battery_backup_reserve_enabled[batt_id] = enabled
+        await self.async_save_settings()
+        _LOGGER.info(
+            "Backup reserve for %s %s (reserve SoC %s%%).",
+            batt_id,
+            "enabled" if enabled else "disabled",
+            self.get_battery_backup_reserve_soc(batt_id),
+        )
+        self._request_priority_recalc(f"{batt_id} backup reserve {'on' if enabled else 'off'}")
+
+    async def async_set_battery_backup_reserve_soc(self, batt_id: str, soc: float) -> None:
+        if batt_id not in self._battery_backup_reserve_soc:
+            return
+        soc = max(float(MIN_BACKUP_RESERVE_SOC), min(float(MAX_BACKUP_RESERVE_SOC), float(soc)))
+        if self._battery_backup_reserve_soc[batt_id] == soc:
+            return
+        self._battery_backup_reserve_soc[batt_id] = soc
+        await self.async_save_settings()
+        _LOGGER.info("Backup reserve SoC for %s set to %s%%.", batt_id, soc)
+        if self.is_battery_backup_reserve_enabled(batt_id):
+            self._request_priority_recalc(f"{batt_id} backup reserve SoC changed")
+        else:
+            async_dispatcher_send(self.hass, SIGNAL_DIAGNOSTICS_UPDATED)
+
+    @property
+    def excluded_battery_ids(self) -> str:
+        return " ".join(b for b, enabled in self._battery_enabled.items() if not enabled)
+
+    @property
+    def backup_reserve_battery_ids(self) -> str:
+        return " ".join(
+            f"{b}({self.get_battery_backup_reserve_soc(b):g}%)"
+            for b, enabled in self._battery_backup_reserve_enabled.items()
+            if enabled
+        )
 
 
     async def async_load_manifest_version(self) -> None:
@@ -835,6 +986,10 @@ class MarstekCoordinator:
             # Optional: Alles auf 0 setzen zur Sicherheit
             await self._set_all_batteries_to_zero()
             return
+
+        # Batteries removed from control by the user are held at 0W in every cycle,
+        # independent of which control path (normal, PID, CT, wallbox ...) runs below.
+        await self._enforce_disabled_batteries_idle()
 
         # Net grid power (import/export). This is the signal PID should drive towards 0W.
         smoothed_grid_power = self._get_smoothed_grid_power()
@@ -1507,6 +1662,9 @@ class MarstekCoordinator:
             and not (self._last_power_direction == PowerDir.CHARGE and self._allow_charging is False)
             and not (self._last_power_direction == PowerDir.DISCHARGE and self._allow_discharging is False)
         )
+
+        # battery added/removed or backup reserve changed by the user -> recalc immediately
+        user_selection_changed = self._force_priority_recalc
     
         # check the conditions for prio list change
         if not (
@@ -1515,11 +1673,14 @@ class MarstekCoordinator:
             or missing_prio_list
             or force_battery_prio_update
             or eligibility_changed
+            or user_selection_changed
         ):
             return
     
         # Recalculate the priority list
-        if direction_change_sustained:
+        if user_selection_changed:
+            reason = f"Battery selection changed ({self._force_priority_recalc_reason})"
+        elif direction_change_sustained:
             reason = "Sustained power direction change"
         elif eligibility_changed:
             reason = "Usable battery set changed (SoC limit crossed)"
@@ -1530,6 +1691,8 @@ class MarstekCoordinator:
         else:
             reason = "Time interval elapsed"
         _LOGGER.info(f"Recalculating battery priority. Reason: {reason}")
+        self._force_priority_recalc = False
+        self._force_priority_recalc_reason = ""
         await self._calculate_battery_priority()
         self._last_priority_update = datetime.now()
         self._priority_list_power_direction = self._last_power_direction
@@ -1570,6 +1733,8 @@ class MarstekCoordinator:
 
         eligible: set[str] = set()
         for batt in self._batteries:
+            if not self.is_battery_enabled(batt["id"]):
+                continue
             soc = self._get_float_state_quiet(batt.get("soc"))
             if soc is None:
                 continue
@@ -1579,7 +1744,10 @@ class MarstekCoordinator:
                     batt_max_soc = max_soc
                 if soc <= batt_max_soc:
                     eligible.add(batt["id"])
-            elif self._last_power_direction == PowerDir.DISCHARGE and soc >= min_soc:
+            elif (
+                self._last_power_direction == PowerDir.DISCHARGE
+                and soc >= self.get_battery_discharge_min_soc(batt["id"], min_soc)
+            ):
                 eligible.add(batt["id"])
         return eligible
 
@@ -1610,7 +1778,11 @@ class MarstekCoordinator:
         
         available_batteries = []
         missing_soc: list[str] = []
+        excluded: list[str] = []
         for batt in self._batteries:
+            if not self.is_battery_enabled(batt["id"]):
+                excluded.append(batt["id"])
+                continue
             soc = self._get_float_state(batt["soc"])
             if soc is None:
                 missing_soc.append(batt["id"])
@@ -1624,12 +1796,17 @@ class MarstekCoordinator:
 
             if self._last_power_direction == PowerDir.CHARGE and soc <= batt_max_soc:
                 available_batteries.append(batt_copy)
-            elif self._last_power_direction == PowerDir.DISCHARGE and soc >= min_soc:
+            elif (
+                self._last_power_direction == PowerDir.DISCHARGE
+                and soc >= self.get_battery_discharge_min_soc(batt["id"], min_soc)
+            ):
                 available_batteries.append(batt_copy)
 
         is_reverse = (self._last_power_direction == PowerDir.DISCHARGE)
         self._battery_priority = sorted(available_batteries, key=lambda x: x['current_soc'], reverse=is_reverse)
         _LOGGER.debug(f"New battery priority: {self._battery_priority}")
+        if excluded:
+            _LOGGER.debug("Batteries excluded from control by user: %s", excluded)
         if missing_soc:
             _LOGGER.debug("Battery SoC unavailable for priority calculation: %s", missing_soc)
 
@@ -1645,6 +1822,8 @@ class MarstekCoordinator:
         # 1. Ermittle die Anzahl der Batterien, die aktuell Leistung liefern/aufnehmen
         num_currently_active = 0
         for batt in self._batteries:
+            if not self.is_battery_enabled(batt["id"]):
+                continue
             power_state = self._get_float_state(batt["ac_power"])
             if power_state is not None and abs(power_state) > 10:
                 num_currently_active += 1
@@ -1937,6 +2116,10 @@ class MarstekCoordinator:
                 excluded_due_to_soc = False
                 eligible: list[dict[str, Any]] = []
                 for b in active_batteries:
+                    if not self.is_battery_enabled(b["id"]):
+                        _LOGGER.debug("Excluding battery %s: removed from control by user", b["id"])
+                        excluded_due_to_soc = True
+                        continue
                     soc = self._get_float_state(b["soc"])
                     if soc is None:
                         continue
@@ -1952,12 +2135,14 @@ class MarstekCoordinator:
                         )
                         excluded_due_to_soc = True
                         continue
-                    if self._last_power_direction == PowerDir.DISCHARGE and soc <= min_soc:
+                    batt_min_soc = self.get_battery_discharge_min_soc(b["id"], min_soc)
+                    if self._last_power_direction == PowerDir.DISCHARGE and soc <= batt_min_soc:
                         _LOGGER.debug(
-                            "Excluding battery %s from DISCHARGE: soc=%s <= min_soc=%s",
+                            "Excluding battery %s from DISCHARGE: soc=%s <= min_soc=%s%s",
                             b["id"],
                             soc,
-                            min_soc,
+                            batt_min_soc,
+                            " (backup reserve)" if batt_min_soc > min_soc else "",
                         )
                         excluded_due_to_soc = True
                         continue
@@ -2106,8 +2291,11 @@ class MarstekCoordinator:
             else:
                 await self._set_battery_power(batt, 0, 0)
 
-    async def _set_battery_power(self, batt: dict, power: int, direction: int):
-        """Set the charge or discharge power for a single battery."""
+    async def _set_battery_power(self, batt: dict, power: int, direction: int, *, force: bool = False):
+        """Set the charge or discharge power for a single battery.
+
+        force=True bypasses the service call cache (commands are always sent).
+        """
         charge_entity = batt["charge_power"]
         discharge_entity = batt["discharge_power"]
         force_mode = batt["force_mode"]
@@ -2195,6 +2383,42 @@ class MarstekCoordinator:
             await asyncio.sleep(0.1)
         except Exception as e:
             _LOGGER.error(f"Failed to set power for {batt['id']}: {e}")
+
+    def _is_battery_idle(self, batt: dict) -> bool:
+        """Check via the battery's own entities whether it is really held at 0W.
+
+        Idle means: RS485 control mode on (forcible), force mode 'standby' and
+        charge/discharge power set to 0. Entities that are unavailable are
+        treated as 'not idle' so the commands are re-sent.
+        """
+        rs485_state = self.hass.states.get(batt.get("rs485_mode") or "")
+        if rs485_state is None or rs485_state.state != STATE_ON:
+            return False
+        force_state = self.hass.states.get(batt.get("force_mode") or "")
+        if force_state is None or force_state.state != "standby":
+            return False
+        for key in ("charge_power", "discharge_power"):
+            value = self._get_float_state_quiet(batt.get(key))
+            if value is None or value != 0:
+                return False
+        return True
+
+    async def _enforce_disabled_batteries_idle(self) -> None:
+        """Keep all batteries that were removed from control by the user at 0W.
+
+        Runs every update cycle. If a battery's entities already show the idle
+        state, the (cached) zero command is cheap and nothing is sent. If they
+        deviate (e.g. changed externally or a command got lost), the zero
+        command is re-sent bypassing the service call cache.
+        """
+        for batt in self._batteries:
+            if self.is_battery_enabled(batt["id"]):
+                continue
+            if self._is_battery_idle(batt):
+                await self._set_battery_power(batt, 0, 0)
+                continue
+            _LOGGER.debug("Battery %s is excluded from control but not idle. Forcing 0W.", batt["id"])
+            await self._set_battery_power(batt, 0, 0, force=True)
 
     async def _set_all_batteries_to_zero(self):
         """Set all configured batteries power to 0."""

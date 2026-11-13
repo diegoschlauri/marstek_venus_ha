@@ -2,7 +2,12 @@
 
 DOMAIN = "marstek_venus_ha"
 
-PLATFORMS: list[str] = ["sensor", "switch"]
+PLATFORMS: list[str] = ["sensor", "switch", "number"]
+
+# Per-battery runtime controls (backup reserve / exclusion from control)
+DEFAULT_BACKUP_RESERVE_SOC = 30
+MIN_BACKUP_RESERVE_SOC = 0
+MAX_BACKUP_RESERVE_SOC = 100
 
 SIGNAL_DIAGNOSTICS_UPDATED = f"{DOMAIN}_diagnostics_updated"
 

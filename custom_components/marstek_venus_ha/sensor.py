@@ -124,6 +124,18 @@ DIAGNOSTIC_SENSORS: tuple[DiagnosticSensorDescription, ...] = (
         has_entity_name=True,
     ),
     DiagnosticSensorDescription(
+        key="excluded_batteries",
+        name="Excluded Batteries",
+        value_fn=lambda c: c.excluded_battery_ids,
+        has_entity_name=True,
+    ),
+    DiagnosticSensorDescription(
+        key="backup_reserve_batteries",
+        name="Backup Reserve Batteries",
+        value_fn=lambda c: c.backup_reserve_battery_ids,
+        has_entity_name=True,
+    ),
+    DiagnosticSensorDescription(
         key="priority_next_update",
         name="Priority Next Update",
         value_fn=lambda c: c.priority_next_update,

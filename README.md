@@ -180,3 +180,29 @@ The integration provides dedicated switches in Home Assistant to manually overri
 * **Discharging Allowed** (`switch.*._discharging_switch`): Manually allow/block the batteries from discharging into the house.
 * **Wallbox Priority** (`switch.*._wallbox_priority_switch`): Enable/disable the logic that prioritizes the EV over home batteries.
 * **Block battery discharge while car charging** (`switch.*._discharge_blocker_cc_switch`): Standard protection. If disabled, your home batteries are allowed to discharge into your EV.
+
+
+### Per-battery controls (backup reserve & battery selection)
+For every configured battery the integration creates the following entities (all persisted across restarts and usable in automations):
+* **Battery X Active** (`switch.marstek_venus_ha_battery_X_active`): Includes (on) or completely removes (off) the battery from the control logic. A removed battery is no longer used for charging or discharging: it is set to 0W/standby immediately when switched off and is actively held there in every update cycle (if its entities deviate from standby/0W, the commands are re-sent). Useful e.g. to run on only one or two batteries when there is little solar power.
+* **Battery X Backup Reserve** (`switch.marstek_venus_ha_battery_X_backup_reserve`): Activates an additional minimum SoC for **discharging** (emergency power reserve). When the battery reaches this SoC it is no longer used for discharging; charging is not affected.
+* **Battery X Backup Reserve SoC** (`number.marstek_venus_ha_battery_X_backup_reserve_soc`): The reserve SoC in % (default 30%). The effective discharge limit is the higher of the global `min_soc` and this value.
+
+Every change of these entities immediately triggers a new battery priority calculation. The diagnostic sensors **Excluded Batteries** and **Backup Reserve Batteries** show the current state.
+
+Example automation – use only battery 1 when PV production is low:
+```yaml
+automation:
+  - alias: "Low PV - only battery 1"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.pv_power
+        below: 500
+        for: "00:10:00"
+    action:
+      - service: switch.turn_off
+        target:
+          entity_id:
+            - switch.marstek_venus_ha_battery_2_active
+            - switch.marstek_venus_ha_battery_3_active
+```
